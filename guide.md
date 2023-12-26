@@ -1,7 +1,7 @@
 
 # ENV:
-* ### 常用工具:   
-   * telnet 工具 putty (下载: https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html)  
+* ### 常用工具:
+   * telnet 工具 putty (下载: https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html)
    * ssh 工具 FinalShell (下载: https://www.hostbuf.com/t/988.html)  
    * sftp 工具 WinSCP (下载: https://winscp.net/eng/index.php)
    * 文本编辑工具 Notepad3 (下载: https://github.com/rizonesoft/Notepad3/releases)
@@ -27,10 +27,12 @@
      * https://www.synology.com/en-us/support/RAID_calculator
 
 # 安装条件
-  1. 引导盘要大于 2GB.
-  2. 安装盘要大于 32GB.
-  3. 内存需要大于 4GB.
-  4. DT的型号（kver 4.4）目前不支持HBA扩展卡.
+  1. 引导盘：当前支持 SATA/SCSI/NVME/MMC/IDE or USB 设备, 且要大于 2GB. (SCSI比较复杂,并不是全部可用)
+  2. 安装盘: 至少需要1个SATA接口硬盘 或者 1个 MMC 作为存储设备. 且要大于 32GB 才可创建存储池.
+  3. 内存: 需要大于 4GB.
+  4. DT的型号目前不支持HBA扩展卡(较新版本的RR引导 SA6400 支持).
+  5. NVME的PCIPATH有两种格式, 单层路径的兼容 DT 的型号, 多层路径的兼容 DS918+ 等型号.
+  
 
 # GPU
 * vGPU: https://blog.kkk.rs/
@@ -42,7 +44,7 @@
     ```shell
     # 在 shell 中下载需要的版本或者手动上传到 ~/ 下
     # Download the required version in the shell or manually upload it to ~/
-    curl -kL -o ~/rr.zip https://github.com/wjz304/rr/releases/download/23.4.5/rr-23.11.1.img.zip
+    curl -kL -o ~/rr.zip https://github.com/syno-community/rr/releases/download/23.4.5/rr-23.11.1.img.zip
     # 卸载挂载的引导盘
     # Uninstalling the mounted boot disk
     umount /mnt/p1 /mnt/p2 /mnt/p3

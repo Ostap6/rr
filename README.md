@@ -30,10 +30,10 @@ This project is a system for redpill's preinstallation and recovery environment.
 
 
 ### 组件: 
-<b>https://github.com/wjz304/rr</b>
-* addons: https://github.com/wjz304/rr-addons
-* modules: https://github.com/wjz304/rr-modules
-* rp-lkms: https://github.com/wjz304/rr-lkms
+<b>https://github.com/syno-community/rr</b>
+* addons: https://github.com/syno-community/rr-addons
+* modules: https://github.com/syno-community/rr-modules
+* rp-lkms: https://github.com/syno-community/rr-lkms
 
 ### About GPU: 
 * vGPU: https://blog.kkk.rs/
@@ -42,16 +42,16 @@ This project is a system for redpill's preinstallation and recovery environment.
 
 ## 说明 - Instructions
 * [GUIDE](./guide.md)
-* [About get logs](https://github.com/wjz304/rr/issues/173)
-* [About not find DSM after "boot the loader"](https://github.com/wjz304/rr/issues/175)
-* [About DT(Device Tree) and *portcfg/maxdisks](https://github.com/wjz304/rr/issues/226)
+* [About get logs](https://github.com/syno-community/rr/issues/173)
+* [About not find DSM after "boot the loader"](https://github.com/syno-community/rr/issues/175)
+* [About DT(Device Tree) and *portcfg/maxdisks](https://github.com/syno-community/rr/issues/226)
 
 ## 翻译 - Translation
 * 其他语言的翻译 - Language translation work:
     ```shell
     # If it does not involve adding or deleting, the following process is not required.
     sudo apt install gettext
-    git clone https://github.com/wjz304/rr.git
+    git clone https://github.com/syno-community/rr.git
     cd files/initrd/opt/rr
     xgettext -L Shell --keyword=TEXT *.sh -o lang/rr.pot
     sed -i 's/charset=CHARSET/charset=UTF-8/' lang/rr.pot
