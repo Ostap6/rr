@@ -1,5 +1,6 @@
 id: "RS1619xs+"
 synoinfo: &synoinfo
+  supportext4: "yes"
   support_disk_compatibility: "no"
   support_memory_compatibility: "no"
   support_led_brightness_adjustment: "no"
@@ -30,7 +31,7 @@ serial:
 dom: 2
 dt: false
 disks: 4
-beta: true
+beta: false
 productvers:
   "6.2":
     kver: "4.4.59"

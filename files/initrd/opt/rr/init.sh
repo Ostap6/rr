@@ -36,6 +36,7 @@ initConfigKey "kernelway" "power" "${USER_CONFIG_FILE}"
 initConfigKey "kernelpanic" "5" "${USER_CONFIG_FILE}"
 initConfigKey "odp" "false" "${USER_CONFIG_FILE}"
 initConfigKey "hddsort" "false" "${USER_CONFIG_FILE}"
+initConfigKey "emmcboot" "false" "${USER_CONFIG_FILE}"
 initConfigKey "model" "" "${USER_CONFIG_FILE}"
 initConfigKey "productver" "" "${USER_CONFIG_FILE}"
 initConfigKey "buildnum" "" "${USER_CONFIG_FILE}"
@@ -169,13 +170,17 @@ echo
 echo -e "$(TEXT "Call \033[1;32mmenu.sh\033[0m to configure loader")"
 echo
 echo -e "$(TEXT "User config is on") \033[1;32m${USER_CONFIG_FILE}\033[0m"
+echo -e "$(TEXT "TTYD: \033[1;34mhttp://rr:7681/\033[0m")"
+echo -e "$(TEXT "DUFS: \033[1;34mhttp://rr:7304/\033[0m")"
+echo -e "$(TEXT "TTYD&DUFS: \033[1;34mhttp://rr:80/\033[0m")"
+echo
 echo -e "$(TEXT "Default SSH Root password is") \033[1;31mrr\033[0m"
 echo
 
 DSMLOGO="$(readConfigKey "dsmlogo" "${USER_CONFIG_FILE}")"
 if [ "${DSMLOGO}" = "true" -a -c "/dev/fb0" ]; then
   IP="$(getIP)"
-  [ -n "${IP}" ] && URL="http://${IP}:7681" || URL="http://arpl:7681/"
+  [ -n "${IP}" ] && URL="http://${IP}:7681" || URL="http://rr:7681/"
   python ${WORK_PATH}/include/functions.py makeqr -d "${URL}" -l "bl" -o "${TMP_PATH}/qrcode.png"
   [ -f "${TMP_PATH}/qrcode.png" ] && echo | fbv -acufi "${TMP_PATH}/qrcode.png" >/dev/null 2>/dev/null || true
 fi

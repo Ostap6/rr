@@ -1,4 +1,4 @@
-RR_VERSION="23.11.30"
+RR_VERSION="23.12.10"
 RR_TITLE="RR v${RR_VERSION}"
 
 # Define paths
@@ -28,3 +28,4 @@ LKM_PATH="${PART3_PATH}/lkms"
 ADDONS_PATH="${PART3_PATH}/addons"
 MODULES_PATH="${PART3_PATH}/modules"
 USER_UP_PATH="${PART3_PATH}/users"
+SCRIPTS_PATH="${PART3_PATH}/scripts"

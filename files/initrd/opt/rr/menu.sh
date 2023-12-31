@@ -38,6 +38,7 @@ KERNELWAY="$(readConfigKey "kernelway" "${USER_CONFIG_FILE}")"
 KERNELPANIC="$(readConfigKey "kernelpanic" "${USER_CONFIG_FILE}")"
 ODP="$(readConfigKey "odp" "${USER_CONFIG_FILE}")" # official drivers priorities
 HDDSORT="$(readConfigKey "hddsort" "${USER_CONFIG_FILE}")"
+EMMCBOOT="$(readConfigKey "emmcboot" "${USER_CONFIG_FILE}")"
 SN="$(readConfigKey "sn" "${USER_CONFIG_FILE}")"
 MAC1="$(readConfigKey "mac1" "${USER_CONFIG_FILE}")"
 MAC2="$(readConfigKey "mac2" "${USER_CONFIG_FILE}")"
@@ -139,7 +140,7 @@ function modelMenu() {
       if [ "${resp}" = "c" ]; then
         models=(DS918+ RS1619xs+ DS419+ DS1019+ DS719+ DS1621xs+)
         [ $(lspci -d ::300 | grep 8086 | wc -l) -gt 0 ] && iGPU=1 || iGPU=0
-        [ $(lspci -d ::107 | wc -l) -gt 0 ] && LSI=1 || LSI=0
+        [ $(lspci -d ::104 | wc -l) -gt 0 -o $(lspci -d ::107 | wc -l) -gt 0 ] && LSI=1 || LSI=0
         [ $(lspci -d ::108 | wc -l) -gt 0 ] && NVME=1 || NVME=0
         if [ "${NVME}" = "1" ]; then
           for PCI in $(lspci -d ::108 | awk '{print $1}'); do
@@ -209,6 +210,11 @@ function modelMenu() {
     for I in $(seq 1 ${NETIF_NUM}); do
       writeConfigKey "mac${I}" "${MACS[$((${I} - 1))]}" "${USER_CONFIG_FILE}"
     done
+    writeConfigKey "synoinfo" "{}" "${USER_CONFIG_FILE}"
+    writeConfigKey "modules" "{}" "${USER_CONFIG_FILE}"
+    # Remove old files
+    rm -f "${ORI_ZIMAGE_FILE}" "${ORI_RDGZ_FILE}" "${MOD_ZIMAGE_FILE}" "${MOD_RDGZ_FILE}"
+    rm -f "${PART1_PATH}/grub_cksum.syno" "${PART1_PATH}/GRUB_VER" "${PART2_PATH}/"*
     touch ${PART1_PATH}/.build
   fi
 }
@@ -316,6 +322,7 @@ function productversMenu() {
   done < <(getAllModules "${PLATFORM}" "$([ -n "${KPRE}" ] && echo "${KPRE}-")${KVER}")
   # Remove old files
   rm -f "${ORI_ZIMAGE_FILE}" "${ORI_RDGZ_FILE}" "${MOD_ZIMAGE_FILE}" "${MOD_RDGZ_FILE}"
+  rm -f "${PART1_PATH}/grub_cksum.syno" "${PART1_PATH}/GRUB_VER" "${PART2_PATH}/"*
   touch ${PART1_PATH}/.build
 }
 
@@ -341,14 +348,13 @@ function addonMenu() {
       --default-item ${NEXT} --menu "$(TEXT "Choose a option")" 0 0 0 \
       a "$(TEXT "Add an addon")" \
       d "$(TEXT "Delete addons")" \
-      m "$(TEXT "Show all addons")" \
-      o "$(TEXT "Upload a external addon")" \
+      s "$(TEXT "Show all addons")" \
+      u "$(TEXT "Upload a external addon")" \
       e "$(TEXT "Exit")" \
       2>${TMP_PATH}/resp
     [ $? -ne 0 ] && return
     case "$(<${TMP_PATH}/resp)" in
     a)
-      NEXT='a'
       rm -f "${TMP_PATH}/menu"
       while read ADDON DESC; do
         arrayExistItem "${ADDON}" "${!ADDONS[@]}" && continue # Check if addon has already been added
@@ -376,7 +382,6 @@ function addonMenu() {
       touch ${PART1_PATH}/.build
       ;;
     d)
-      NEXT='d'
       if [ ${#ADDONS[@]} -eq 0 ]; then
         DIALOG --title "$(TEXT "Addons")" \
           --msgbox "$(TEXT "No user addons to remove")" 0 0
@@ -398,8 +403,7 @@ function addonMenu() {
       done
       touch ${PART1_PATH}/.build
       ;;
-    m)
-      NEXT='m'
+    s)
       MSG=""
       MSG+="$(TEXT "Name with color \"\Z4blue\Zn\" have been added, with color \"black\" are not added.\n\n")"
       while read MODULE DESC; do
@@ -413,10 +417,10 @@ function addonMenu() {
       DIALOG --title "$(TEXT "Addons")" \
         --msgbox "${MSG}" 0 0
       ;;
-    o)
-      if ! tty | grep -q "/dev/pts"; then
+    u)
+      if ! tty | grep -q "/dev/pts"; then #if ! tty | grep -q "/dev/pts" || [ -z "${SSH_TTY}" ]; then
         DIALOG --title "$(TEXT "Addons")" \
-          --msgbox "$(TEXT "This feature is only available when accessed via web/ssh.")" 0 0
+          --msgbox "$(TEXT "This feature is only available when accessed via ssh (Requires a terminal that supports ZModem protocol).")" 0 0
         return
       fi
       DIALOG --title "$(TEXT "Addons")" \
@@ -469,15 +473,15 @@ function moduleMenu() {
   while true; do
     DIALOG --title "$(TEXT "Modules")" \
       --default-item ${NEXT} --menu "$(TEXT "Choose a option")" 0 0 0 \
-      c "$(TEXT "Show/Select modules")" \
+      s "$(TEXT "Show/Select modules")" \
       l "$(TEXT "Select loaded modules")" \
-      o "$(TEXT "Upload a external module")" \
+      u "$(TEXT "Upload a external module")" \
       p "$(TEXT "Priority use of official drivers:") \Z4${ODP}\Zn" \
       e "$(TEXT "Exit")" \
       2>${TMP_PATH}/resp
     [ $? -ne 0 ] && break
     case "$(<${TMP_PATH}/resp)" in
-    c)
+    s)
       while true; do
         DIALOG --title "$(TEXT "Modules")" \
           --infobox "$(TEXT "Reading modules ...")" 0 0
@@ -542,10 +546,10 @@ function moduleMenu() {
       done
       touch ${PART1_PATH}/.build
       ;;
-    o)
-      if ! tty | grep -q "/dev/pts"; then
+    u)
+      if ! tty | grep -q "/dev/pts"; then #if ! tty | grep -q "/dev/pts" || [ -z "${SSH_TTY}" ]; then
         DIALOG --title "$(TEXT "Modules")" \
-          --msgbox "$(TEXT "This feature is only available when accessed via web/ssh.")" 0 0
+          --msgbox "$(TEXT "This feature is only available when accessed via ssh (Requires a terminal that supports ZModem protocol).")" 0 0
         return
       fi
       MSG=""
@@ -673,7 +677,7 @@ function cmdlineMenu() {
       done
       ;;
     s)
-      MSG="$(TEXT "Note: (MAC will not be set to NIC)")"
+      MSG="$(TEXT "Note: (MAC will not be set to NIC, Only for activation services.)")"
       sn="${SN}"
       mac1="${MAC1}"
       mac2="${MAC2}"
@@ -833,6 +837,7 @@ function extractDsmFiles() {
     if [ ${CLEARCACHE} -eq 1 ]; then
       echo "$(TEXT "Cleaning cache ...")"
       rm -rf "${PART3_PATH}/dl"
+      CLEARCACHE=0
     fi
     mkdir -p "${PART3_PATH}/dl"
     mirrors=("global.synologydownload.com" "global.download.synology.com" "cndl.synology.cn")
@@ -927,7 +932,7 @@ function extractDsmFiles() {
       if [ $? -ne 0 ]; then
         rm -f "${OLDPAT_PATH}"
         rm -rf "${RAMDISK_PATH}"
-        echo -e "${LOG_FILE}" >"${MKERR_FILE}"
+        cat "${LOG_FILE}" >"${MKERR_FILE}"
         return 1
       fi
       [ ${CLEARCACHE} -eq 1 ] && rm -f "${OLDPAT_PATH}"
@@ -944,13 +949,13 @@ function extractDsmFiles() {
       rm -rf "${RAMDISK_PATH}"
     fi
     # Uses the extractor to untar pat file
-    echo "$(TEXT "Extracting...")"
+    echo "$(TEXT "Extracting ...")"
     LD_LIBRARY_PATH=${EXTRACTOR_PATH} "${EXTRACTOR_PATH}/${EXTRACTOR_BIN}" "${PAT_PATH}" "${UNTAR_PAT_PATH}" || true
   else
-    echo "$(TEXT "Extracting...")"
+    echo "$(TEXT "Extracting ...")"
     tar -xf "${PAT_PATH}" -C "${UNTAR_PAT_PATH}" >"${LOG_FILE}" 2>&1
     if [ $? -ne 0 ]; then
-      echo -e "${LOG_FILE}" >"${MKERR_FILE}"
+      cat "${LOG_FILE}" >"${MKERR_FILE}"
       return 1
     fi
   fi
@@ -1062,21 +1067,23 @@ function advancedMenu() {
     echo "u \"$(TEXT "Edit user config file manually")\"" >>"${TMP_PATH}/menu"
     echo "h \"$(TEXT "Edit grub.cfg file manually")\"" >>"${TMP_PATH}/menu"
     echo "t \"$(TEXT "Try to recovery a DSM installed system")\"" >>"${TMP_PATH}/menu"
-    echo "s \"$(TEXT "Show SATA(s) # ports and drives")\"" >>"${TMP_PATH}/menu"
+    echo "s \"$(TEXT "Show disks information")\"" >>"${TMP_PATH}/menu"
     if [ -n "${MODEL}" -a -n "${PRODUCTVER}" ]; then
       echo "c \"$(TEXT "show/modify the current pat data")\"" >>"${TMP_PATH}/menu"
     fi
     echo "a \"$(TEXT "Allow downgrade installation")\"" >>"${TMP_PATH}/menu"
     echo "f \"$(TEXT "Format disk(s) # Without loader disk")\"" >>"${TMP_PATH}/menu"
     echo "x \"$(TEXT "Reset DSM system password")\"" >>"${TMP_PATH}/menu"
+    echo "z \"$(TEXT "Force enable telnet of DSM system")\"" >>"${TMP_PATH}/menu"
     echo "p \"$(TEXT "Save modifications of '/opt/rr'")\"" >>"${TMP_PATH}/menu"
     if [ -n "${MODEL}" -a "true" = "$(readModelKey "${MODEL}" "dt")" ]; then
       echo "d \"$(TEXT "Custom dts file # Need rebuild")\"" >>"${TMP_PATH}/menu"
     fi
-    if [ -n "${DEBUG}" ]; then
-      echo "b \"$(TEXT "Backup bootloader disk # test")\"" >>"${TMP_PATH}/menu"
-      echo "r \"$(TEXT "Restore bootloader disk # test")\"" >>"${TMP_PATH}/menu"
+    echo "0 \"$(TEXT "Custom patch script # Developer")\"" >>"${TMP_PATH}/menu"
+    if [ -b "/dev/mmcblk0" ]; then
+      echo "b \"$(TEXT "Use EMMC as the system disk:") \Z4${EMMCBOOT}\Zn\"" >>"${TMP_PATH}/menu"
     fi
+    echo "r \"$(TEXT "Clone bootloader disk to another disk")\"" >>"${TMP_PATH}/menu"
     echo "v \"$(TEXT "Report bugs to the author")\"" >>"${TMP_PATH}/menu"
     echo "o \"$(TEXT "Install development tools")\"" >>"${TMP_PATH}/menu"
     echo "g \"$(TEXT "Show QR logo:") \Z4${DSMLOGO}\Zn\"" >>"${TMP_PATH}/menu"
@@ -1099,12 +1106,12 @@ function advancedMenu() {
       [ "${HDDSORT}" = "true" ] && HDDSORT='false' || HDDSORT='true'
       writeConfigKey "hddsort" "${HDDSORT}" "${USER_CONFIG_FILE}"
       touch ${PART1_PATH}/.build
-      NEXT="l"
+      NEXT="j"
       ;;
     q)
       [ "${DIRECTBOOT}" = "false" ] && DIRECTBOOT='true' || DIRECTBOOT='false'
       writeConfigKey "directboot" "${DIRECTBOOT}" "${USER_CONFIG_FILE}"
-      NEXT="e"
+      NEXT="q"
       ;;
     i)
       ITEMS="$(echo -e "1 \n5 \n10 \n30 \n60 \n")"
@@ -1116,7 +1123,7 @@ function advancedMenu() {
       [ -z "${resp}" ] && return
       BOOTIPWAIT=${resp}
       writeConfigKey "bootipwait" "${BOOTIPWAIT}" "${USER_CONFIG_FILE}"
-      NEXT="e"
+      NEXT="i"
       ;;
     w)
       ITEMS="$(echo -e "1 \n5 \n10 \n30 \n60 \n")"
@@ -1128,12 +1135,12 @@ function advancedMenu() {
       [ -z "${resp}" ] && return
       BOOTWAIT=${resp}
       writeConfigKey "bootwait" "${BOOTWAIT}" "${USER_CONFIG_FILE}"
-      NEXT="e"
+      NEXT="w"
       ;;
     k)
       [ "${KERNELWAY}" = "kexec" ] && KERNELWAY='power' || KERNELWAY='kexec'
       writeConfigKey "kernelway" "${KERNELWAY}" "${USER_CONFIG_FILE}"
-      NEXT="e"
+      NEXT="k"
       ;;
     n)
       rm -f "${TMP_PATH}/opts"
@@ -1148,7 +1155,7 @@ function advancedMenu() {
       [ -z "${resp}" ] && return
       KERNELPANIC=${resp}
       writeConfigKey "kernelpanic" "${KERNELPANIC}" "${USER_CONFIG_FILE}"
-      NEXT="e"
+      NEXT="n"
       ;;
     m)
       MSG="$(TEXT "Temporary IP: (UI will not refresh)")"
@@ -1247,6 +1254,7 @@ function advancedMenu() {
           ;;
         esac
       done
+      NEXT="e"
       ;;
     u)
       editUserConfig
@@ -1256,7 +1264,10 @@ function advancedMenu() {
       editGrubCfg
       NEXT="e"
       ;;
-    t) tryRecoveryDSM ;;
+    t)
+      tryRecoveryDSM
+      NEXT="e"
+      ;;
     s)
       MSG=""
       NUMPORTS=0
@@ -1280,11 +1291,27 @@ function advancedMenu() {
         done
         MSG+="\n"
       done
-      [ $(lspci -d ::107 | wc -l) -gt 0 ] && MSG+="\nLSI:\n"
+      [ $(lspci -d ::104 | wc -l) -gt 0 ] && MSG+="\nRAID:\n"
+      for PCI in $(lspci -d ::104 | awk '{print $1}'); do
+        NAME=$(lspci -s "${PCI}" | sed "s/\ .*://")
+        PORT=$(ls -l /sys/class/scsi_host | grep "${PCI}" | awk -F'/' '{print $NF}' | sed 's/host//' | sort -n)
+        PORTNUM=$(lsscsi -b | grep -v - | grep "\[${PORT}:" | wc -l)
+        MSG+="\Zb${NAME}\Zn\nNumber: ${PORTNUM}\n"
+        NUMPORTS=$((${NUMPORTS} + ${PORTNUM}))
+      done
+      [ $(lspci -d ::107 | wc -l) -gt 0 ] && MSG+="\nHBA:\n"
       for PCI in $(lspci -d ::107 | awk '{print $1}'); do
         NAME=$(lspci -s "${PCI}" | sed "s/\ .*://")
         PORT=$(ls -l /sys/class/scsi_host | grep "${PCI}" | awk -F'/' '{print $NF}' | sed 's/host//' | sort -n)
         PORTNUM=$(lsscsi -b | grep -v - | grep "\[${PORT}:" | wc -l)
+        MSG+="\Zb${NAME}\Zn\nNumber: ${PORTNUM}\n"
+        NUMPORTS=$((${NUMPORTS} + ${PORTNUM}))
+      done
+      [ $(lspci -d ::100 | wc -l) -gt 0 ] && MSG+="\nVIRTIO:\n"
+      for PCI in $(lspci -d ::100 | awk '{print $1}'); do
+        NAME=$(lspci -s "${PCI}" | sed "s/\ .*://")
+        PORTNUM=$(ls -l /sys/block/vd* | grep "${PCI}" | wc -l)
+        [ ${PORTNUM} -eq 0 ] && continue
         MSG+="\Zb${NAME}\Zn\nNumber: ${PORTNUM}\n"
         NUMPORTS=$((${NUMPORTS} + ${PORTNUM}))
       done
@@ -1362,11 +1389,13 @@ function advancedMenu() {
       ;;
     f)
       rm -f "${TMP_PATH}/opts"
-      while read POSITION NAME; do
-        [ -z "${POSITION}" -o -z "${NAME}" ] && continue
-        echo "${POSITION}" | grep -q "${LOADER_DISK}" && continue
-        echo "\"${POSITION}\" \"${NAME}\" \"off\"" >>"${TMP_PATH}/opts"
-      done < <(ls -l /dev/disk/by-id/ | sed 's|../..|/dev|g' | grep -E "/dev/sd|/dev/mmc|/dev/nvme" | awk -F' ' '{print $NF" "$(NF-2)}' | sort -uk 1,1)
+      while read KNAME ID; do
+        [ -z "${KNAME}" ] && continue
+        [[ "${KNAME}" = /dev/md* ]] && continue
+        [ -z "${ID}" ] && ID="Unknown"
+        echo "${KNAME}" | grep -q "${LOADER_DISK}" && continue
+        echo "\"${KNAME}\" \"${ID}\" \"off\"" >>"${TMP_PATH}/opts"
+      done < <(lsblk -pno KNAME,ID)
       if [ ! -f "${TMP_PATH}/opts" ]; then
         DIALOG --title "$(TEXT "Advanced")" \
           --msgbox "$(TEXT "No disk found!")" 0 0
@@ -1391,7 +1420,11 @@ function advancedMenu() {
       fi
       (
         for I in ${RESP}; do
-          echo y | mkfs.ext4 -T largefile4 "${I}"
+          if [[ "${I}" = /dev/mmc* ]]; then
+            echo y | mkdosfs -F32 "${I}"
+          else
+            echo y | mkfs.ext4 -T largefile4 "${I}"
+          fi
         done
       ) 2>&1 | DIALOG --title "$(TEXT "Advanced")" \
         --progressbox "$(TEXT "Formatting ...")" 20 100
@@ -1404,11 +1437,14 @@ function advancedMenu() {
       for I in $(ls /dev/sd*1 2>/dev/null | grep -v "${LOADER_DISK_PART1}"); do
         mount ${I} "${TMP_PATH}/sdX1"
         if [ -f "${TMP_PATH}/sdX1/etc/shadow" ]; then
-          for U in $(cat "${TMP_PATH}/sdX1/etc/shadow" | awk -F ':' '{if ($2 != "*" && $2 != "!!") {print $1;}}'); do
+          while read L; do
+            U=$(echo "${L}" | awk -F ':' '{if ($2 != "*" && $2 != "!!") print $1;}')
+            [ -z "${U}" ] && continue
+            E=$(echo "${L}" | awk -F ':' '{if ($8 == "1") print "disabled"; else print "        ";}')
             grep -q "status=on" "${TMP_PATH}/sdX1/usr/syno/etc/packages/SecureSignIn/preference/${U}/method.config" 2>/dev/null
-            [ $? -eq 0 ] && SS="SecureSignIn" || SS="            "
-            printf "\"%-36s %-16s\"\n" "${U}" "${SS}" >>"${TMP_PATH}/menu"
-          done
+            [ $? -eq 0 ] && S="SecureSignIn" || S="            "
+            printf "\"%-36s %-10s %-14s\"\n" "${U}" "${E}" "${S}" >>"${TMP_PATH}/menu"
+          done < <(cat "${TMP_PATH}/sdX1/etc/shadow")
         fi
         umount "${I}"
         [ -f "${TMP_PATH}/menu" ] && break
@@ -1441,7 +1477,10 @@ function advancedMenu() {
         for I in $(ls /dev/sd*1 2>/dev/null | grep -v "${LOADER_DISK_PART1}"); do
           mount "${I}" "${TMP_PATH}/sdX1"
           OLDPASSWD="$(cat "${TMP_PATH}/sdX1/etc/shadow" | grep "^${USER}:" | awk -F ':' '{print $2}')"
-          [ -n "${NEWPASSWD}" -a -n "${OLDPASSWD}" ] && sed -i "s|${OLDPASSWD}|${NEWPASSWD}|g" "${TMP_PATH}/sdX1/etc/shadow"
+          if [ -n "${NEWPASSWD}" -a -n "${OLDPASSWD}" ]; then
+            sed -i "s|${OLDPASSWD}|${NEWPASSWD}|g" "${TMP_PATH}/sdX1/etc/shadow"
+            sed -i "/^${USER}:/ s/\([^:]*\):\([^:]*\):\([^:]*\):\([^:]*\):\([^:]*\):\([^:]*\):\([^:]*\):\([^:]*\):\([^:]*\)/\1:\2:\3:\4:\5:\6:\7::\9/" "${TMP_PATH}/sdX1/etc/shadow"
+          fi
           sed -i "s|status=on|status=off|g" "${TMP_PATH}/sdX1/usr/syno/etc/packages/SecureSignIn/preference/${USER}/method.config" 2>/dev/null
           sync
           umount "${I}"
@@ -1452,12 +1491,32 @@ function advancedMenu() {
       DIALOG --title "$(TEXT "Advanced")" \
         --msgbox "$(TEXT "Password reset completed.")" 0 0
       ;;
+    z)
+      DIALOG --title "$(TEXT "Advanced")" \
+        --yesno "$(TEXT "Please insert all disks before continuing.\n")" 0 0
+      [ $? -ne 0 ] && return
+      (
+        mkdir -p "${TMP_PATH}/sdX1"
+        for I in $(ls /dev/sd*1 2>/dev/null | grep -v "${LOADER_DISK_PART1}"); do
+          mount "${I}" "${TMP_PATH}/sdX1"
+          echo '#telnet	stream	tcp	nowait	root	/usr/bin/telnetd	telnetd' >"${TMP_PATH}/sdX1/etc/inetd.conf"
+          echo 'telnet	stream	tcp6	nowait	root	/usr/bin/telnetd	telnetd -h' >>"${TMP_PATH}/sdX1/etc/inetd.conf"
+          echo 'telnet	stream	tcp	nowait	root	/usr/bin/telnetd	telnetd -h' >>"${TMP_PATH}/sdX1/etc/inetd.conf"
+          sync
+          umount "${I}"
+        done
+        rm -rf "${TMP_PATH}/sdX1"
+      ) 2>&1 | DIALOG --title "$(TEXT "Advanced")" \
+        --progressbox "$(TEXT "Enabling ...")" 20 100
+      DIALOG --title "$(TEXT "Advanced")" \
+        --msgbox "$(TEXT "Telnet is enabled.")" 0 0
+      ;;
     p)
       DIALOG --title "$(TEXT "Advanced")" \
         --yesno "$(TEXT "Warning:\nDo not terminate midway, otherwise it may cause damage to the RR. Do you want to continue?")" 0 0
       [ $? -ne 0 ] && return
       DIALOG --title "$(TEXT "Advanced")" \
-        --infobox "$(TEXT "Saving ...")" 0 0
+        --infobox "$(TEXT "Saving ...\n(It usually takes 5-10 minutes, please be patient and wait.)")" 0 0
       RDXZ_PATH="${TMP_PATH}/rdxz_tmp"
       mkdir -p "${RDXZ_PATH}"
       (
@@ -1475,9 +1534,9 @@ function advancedMenu() {
         --msgbox ""$(TEXT "Save is complete.")"" 0 0
       ;;
     d)
-      if ! tty | grep -q "/dev/pts"; then
+      if ! tty | grep -q "/dev/pts"; then #if ! tty | grep -q "/dev/pts" || [ -z "${SSH_TTY}" ]; then
         DIALOG --title "$(TEXT "Advanced")" \
-          --msgbox "$(TEXT "This feature is only available when accessed via web/ssh.")" 0 0
+          --msgbox "$(TEXT "This feature is only available when accessed via ssh (Requires a terminal that supports ZModem protocol).")" 0 0
         return
       fi
       DIALOG --title "$(TEXT "Advanced")" \
@@ -1505,87 +1564,103 @@ function advancedMenu() {
       fi
       touch ${PART1_PATH}/.build
       ;;
+    0)
+      MSG=""
+      MSG+="$(TEXT "This option is only informative.\n\n")"
+      MSG+="$(TEXT "This program reserves an interface for ramdisk custom patch scripts.\n")"
+      MSG+="$(TEXT "Call timing: called before ramdisk packaging.\n")"
+      MSG+="$(TEXT "Location: /mnt/p3/scripts/*.sh\n")"
+      DIALOG --title "$(TEXT "Advanced")" \
+        --msgbox "${MSG}" 0 0
+      ;;
     b)
-      if ! tty | grep -q "/dev/pts"; then
-        DIALOG --title "$(TEXT "Advanced")" \
-          --msgbox "$(TEXT "This feature is only available when accessed via web/ssh.")" 0 0
-        return
+      if [ "${EMMCBOOT}" = "true" ]; then
+        EMMCBOOT='false'
+        writeConfigKey "emmcboot" "false" "${USER_CONFIG_FILE}"
+        deleteConfigKey "cmdline.root" "${USER_CONFIG_FILE}"
+        deleteConfigKey "synoinfo.disk_swap" "${USER_CONFIG_FILE}"
+        deleteConfigKey "synoinfo.supportraid" "${USER_CONFIG_FILE}"
+        deleteConfigKey "synoinfo.support_emmc_boot" "${USER_CONFIG_FILE}"
+        deleteConfigKey "synoinfo.support_install_only_dev" "${USER_CONFIG_FILE}"
+      else
+        EMMCBOOT='true'
+        writeConfigKey "emmcboot" "true" "${USER_CONFIG_FILE}"
+        writeConfigKey "cmdline.root" "/dev/mmcblk0p1" "${USER_CONFIG_FILE}"
+        writeConfigKey "synoinfo.disk_swap" "no" "${USER_CONFIG_FILE}"
+        writeConfigKey "synoinfo.supportraid" "no" "${USER_CONFIG_FILE}"
+        writeConfigKey "synoinfo.support_emmc_boot" "yes" "${USER_CONFIG_FILE}"
+        writeConfigKey "synoinfo.support_install_only_dev" "yes" "${USER_CONFIG_FILE}"
       fi
-      DIALOG --title "$(TEXT "Advanced")" \
-        --yesno "$(TEXT "Warning:\nDo not terminate midway, otherwise it may cause damage to the RR. Do you want to continue?")" 0 0
-      [ $? -ne 0 ] && return
-      DIALOG --title "$(TEXT "Advanced")" \
-        --infobox "$(TEXT "Backuping...")" 0 0
-      rm -f /var/www/data/backup.img.gz # thttpd root path
-      dd if="${LOADER_DISK}" bs=1M conv=fsync | gzip >/var/www/data/backup.img.gz
-      if [ $? -ne 0]; then
-        DIALOG --title "$(TEXT "Advanced")" \
-          --msgbox "$(TEXT "Failed to generate backup. There may be insufficient memory. Please clear the cache and try again!")" 0 0
-        return
-      fi
-      if [ -z "${SSH_TTY}" ]; then # web
-        IP_HEAD="$(getIP)"
-        echo "http://${IP_HEAD}/backup.img.gz" >${TMP_PATH}/resp
-        echo "            ↑                  " >>${TMP_PATH}/resp
-        echo "$(TEXT "Click on the address above to download.")" >>${TMP_PATH}/resp
-        echo "$(TEXT "Please confirm the completion of the download before closing this window.")" >>${TMP_PATH}/resp
-        DIALOG --title "$(TEXT "Advanced")" \
-          --editbox "${TMP_PATH}/resp" 10 100
-      else # ssh
-        sz -be -B 536870912 /var/www/data/backup.img.gz
-      fi
-      DIALOG --title "$(TEXT "Advanced")" \
-        --msgbox "$(TEXT "backup is complete.")" 0 0
-      rm -f /var/www/data/backup.img.gz
+      touch ${PART1_PATH}/.build
+      NEXT="b"
       ;;
     r)
-      if ! tty | grep -q "/dev/pts"; then
+      rm -f "${TMP_PATH}/opts"
+      while read KNAME ID; do
+        [ -z "${KNAME}" -o -z "${ID}" ] && continue
+        echo "${KNAME}" | grep -q "${LOADER_DISK}" && continue
+        echo "\"${KNAME}\" \"${ID}\" \"off\"" >>"${TMP_PATH}/opts"
+      done < <(lsblk -dpno KNAME,ID)
+      if [ ! -f "${TMP_PATH}/opts" ]; then
         DIALOG --title "$(TEXT "Advanced")" \
-          --msgbox "$(TEXT "This feature is only available when accessed via web/ssh.")" 0 0
+          --msgbox "$(TEXT "No disk found!")" 0 0
         return
       fi
       DIALOG --title "$(TEXT "Advanced")" \
-        --yesno "$(TEXT "Please upload the backup file.\nCurrently, zip(github) and img.gz(backup) compressed file formats are supported.")" 0 0
+        --radiolist "$(TEXT "Choose a disk to clone to")" 0 0 0 --file "${TMP_PATH}/opts" \
+        2>${TMP_PATH}/resp
       [ $? -ne 0 ] && return
-      IFTOOL=""
-      TMP_UP_PATH="${TMP_PATH}/users"
-      rm -rf "${TMP_UP_PATH}"
-      mkdir -p "${TMP_UP_PATH}"
-      pushd "${TMP_UP_PATH}"
-      rz -be -B 536870912
-      for F in $(ls -A); do
-        USER_FILE="${F}"
-        [ "${F##*.}" = "zip" -a $(unzip -l "${TMP_UP_PATH}/${USER_FILE}" | grep -c "\.img$") -eq 1 ] && IFTOOL="zip"
-        [ "${F##*.}" = "gz" -a "${F#*.}" = "img.gz" ] && IFTOOL="gzip"
-        break
-      done
-      popd
-      if [ -z "${IFTOOL}" -o ! -f "${TMP_UP_PATH}/${USER_FILE}" ]; then
+      RESP=$(<"${TMP_PATH}/resp")
+      if [ -z "${RESP}" ]; then
         DIALOG --title "$(TEXT "Advanced")" \
-          --msgbox "$(printf "$(TEXT "Not a valid .zip/.img.gz file, please try again!")" "${USER_FILE}")" 0 0
+          --msgbox "$(TEXT "No disk selected!")" 0 0
+        return
       else
-        DIALOG --title "$(TEXT "Advanced")" \
-          --yesno "$(TEXT "Warning:\nDo not terminate midway, otherwise it may cause damage to the RR. Do you want to continue?")" 0 0
-        [ $? -ne 0 ] && (
-          rm -f "${TMP_UP_PATH}/${USER_FILE}"
+        SIZE=$(df -m ${RESP} | awk 'NR==2{print $2}')
+        if [ ${SIZE:-0} -lt 1024 ]; then
+          DIALOG --title "$(TEXT "Advanced")" \
+            --msgbox "$(TEXT "Disk %s size is less than 1GB and cannot be cloned!")" 0 0
           return
-        )
-        DIALOG --title "$(TEXT "Advanced")" \
-          --infobox "$(TEXT "Writing...")" 0 0
-        umount "${PART1_PATH}" "${PART2_PATH}" "${PART3_PATH}"
-        if [ "${IFTOOL}" = "zip" ]; then
-          unzip -p "${TMP_UP_PATH}/${USER_FILE}" | dd of="${LOADER_DISK}" bs=1M conv=fsync
-        elif [ "${IFTOOL}" = "gzip" ]; then
-          gzip -dc "${TMP_UP_PATH}/${USER_FILE}" | dd of="${LOADER_DISK}" bs=1M conv=fsync
         fi
+        MSG=""
+        MSG+="$(printf "$(TEXT "Warning:\nDisk %s will be formatted and written to the bootloader. Please confirm that important data has been backed up. \nDo you want to continue?")" "${RESP}")"
         DIALOG --title "$(TEXT "Advanced")" \
-          --yesno "$(printf "$(TEXT "Restore bootloader disk with success to %s!\nReboot?")" "${USER_FILE}")" 0 0
-        [ $? -ne 0 ] && continue
-        reboot
-        exit
+          --yesno "${MSG}" 0 0
+        [ $? -ne 0 ] && return
       fi
+      (
+        rm -rf "${PART3_PATH}/dl"
+        CLEARCACHE=0
+
+        gzip -dc "${WORK_PATH}/grub.img.gz" | dd of="${RESP}" bs=1M conv=fsync status=progress
+        hdparm -z "${RESP}" # reset disk cache
+        fdisk -l "${RESP}"
+        sleep 3
+
+        mkdir -p "${TMP_PATH}/sdX1"
+        mount "$(lsblk "${RESP}" -pno KNAME,LABEL | grep RR1 | awk '{print $1}')" "${TMP_PATH}/sdX1"
+        cp -vRf "${PART1_PATH}/". "${TMP_PATH}/sdX1/"
+        sync
+        umount "${TMP_PATH}/sdX1"
+
+        mkdir -p "${TMP_PATH}/sdX2"
+        mount "$(lsblk "${RESP}" -pno KNAME,LABEL | grep RR2 | awk '{print $1}')" "${TMP_PATH}/sdX2"
+        cp -vRf "${PART2_PATH}/". "${TMP_PATH}/sdX2/"
+        sync
+        umount "${TMP_PATH}/sdX2"
+
+        mkdir -p "${TMP_PATH}/sdX3"
+        mount "$(lsblk "${RESP}" -pno KNAME,LABEL | grep RR3 | awk '{print $1}')" "${TMP_PATH}/sdX3"
+        cp -vRf "${PART3_PATH}/". "${TMP_PATH}/sdX3/"
+        sync
+        umount "${TMP_PATH}/sdX3"
+        sleep 3
+      ) 2>&1 | DIALOG --title "$(TEXT "Advanced")" \
+        --progressbox "$(TEXT "Cloning ...")" 20 100
+      DIALOG --title "${T}" \
+        --msgbox "$(printf "$(TEXT "Bootloader has been cloned to disk %s, please remove the current bootloader disk!\nReboot?")" "${RESP}")" 0 0
+      rebootTo config
       ;;
-      
     v)
       if [ -d "${PART1_PATH}/logs" ]; then
         rm -f "${TMP_PATH}/logs.tar.gz"
@@ -1622,12 +1697,12 @@ function advancedMenu() {
       ) 2>&1 | DIALOG --title "$(TEXT "Advanced")" \
         --progressbox "$(TEXT "opkg installing ...")" 20 100
       DIALOG --title "$(TEXT "Advanced")" \
-        --msgbox "$(TEXT "opkg install is complete. Please reconnect to SSH/web, or execute 'source ~/.bashrc'")" 0 0
+        --msgbox "$(TEXT "opkg install is complete. Please reconnect to ssh/web, or execute 'source ~/.bashrc'")" 0 0
       ;;
     g)
       [ "${DSMLOGO}" = "true" ] && DSMLOGO='false' || DSMLOGO='true'
       writeConfigKey "dsmlogo" "${DSMLOGO}" "${USER_CONFIG_FILE}"
-      NEXT="e"
+      NEXT="g"
       ;;
     1)
       RET=1
@@ -1854,8 +1929,6 @@ function downloadExts() {
   if [ "${PRERELEASE}" = "true" ]; then
     TAG="$(curl -skL "${PROXY}${3}/tags" | grep /refs/tags/.*\.zip | head -1 | sed -r 's/.*\/refs\/tags\/(.*)\.zip.*$/\1/')"
   else
-    # TAG=`curl -skL "${PROXY}https://api.github.com/repos/wjz304/rr-addons/releases/latest" | grep "tag_name" | awk '{print substr($2, 2, length($2)-3)}'`
-    # In the absence of authentication, the default API access count for GitHub is 60 per hour, so removing the use of api.github.com
     LATESTURL="$(curl -skL -w %{url_effective} -o /dev/null "${PROXY}${3}/releases/latest")"
     TAG="${LATESTURL##*/}"
   fi
@@ -2015,64 +2088,79 @@ function updateMenu() {
     echo "e \"$(TEXT "Exit")\"" >>"${TMP_PATH}/menu"
 
     DIALOG --title "$(TEXT "Update")" \
-      --menu "$(TEXT "Choose a option")" 0 0 0 --file "${TMP_PATH}/menu" \
+      --menu "$(TEXT "Manually uploading update.zip,addons.zip,modules.zip,rp-lkms.zip to /tmp/ will skip the download.")" 0 0 0 --file "${TMP_PATH}/menu" \
       2>${TMP_PATH}/resp
     [ $? -ne 0 ] && return
     case "$(<${TMP_PATH}/resp)" in
     a)
       T="$(printf "$(TEXT "Update %s")" "$(TEXT "addons")")"
-      downloadExts "addons" "${CUR_ADDONS_VER:-None}" "https://github.com/wjz304/rr-addons" "addons" "1"
-      [ $? -eq 0 ] && updateExts "addons" "1"
+      if [ ! -f "${TMP_PATH}/addons.zip" ]; then
+        downloadExts "addons" "${CUR_ADDONS_VER:-None}" "https://github.com/XXXXXX/rr-addons" "addons" "1"
+      fi
+      [ -f "${TMP_PATH}/addons.zip" ] && updateExts "addons" "1"
       T="$(printf "$(TEXT "Update %s")" "$(TEXT "modules")")"
-      downloadExts "modules" "${CUR_MODULES_VER:-None}" "https://github.com/wjz304/rr-modules" "modules" "1"
-      [ $? -eq 0 ] && updateExts "modules" "1"
+      if [ ! -f "${TMP_PATH}/modules.zip" ]; then
+        downloadExts "modules" "${CUR_MODULES_VER:-None}" "https://github.com/XXXXXX/rr-modules" "modules" "1"
+      fi
+      [ -f "${TMP_PATH}/modules.zip" ] && updateExts "modules" "1"
       T="$(printf "$(TEXT "Update %s")" "$(TEXT "LKMs")")"
-      downloadExts "LKMs" "${CUR_LKMS_VER:-None}" "https://github.com/wjz304/rr-lkms" "rp-lkms" "1"
-      [ $? -eq 0 ] && updateExts "LKMs" "1"
+      if [ ! -f "${TMP_PATH}/rp-lkms.zip" ]; then
+        downloadExts "LKMs" "${CUR_LKMS_VER:-None}" "https://github.com/XXXXXX/rr-lkms" "rp-lkms" "1"
+      fi
+      [ -f "${TMP_PATH}/rp-lkms.zip" ] && updateExts "LKMs" "1"
       T="$(printf "$(TEXT "Update %s")" "$(TEXT "RR")")"
-      downloadExts "RR" "${CUR_RR_VER:-None}" "https://github.com/wjz304/rr" "update" "0"
-      [ $? -ne 0 ] && continue
-      updateRR "RR"
+      if [ ! -f "${TMP_PATH}/update.zip" ]; then
+        downloadExts "RR" "${CUR_RR_VER:-None}" "https://github.com/XXXXXX/rr" "update" "0"
+      fi
+      [ -f "${TMP_PATH}/update.zip" ] && updateRR "RR"
       ;;
     r)
       T="$(printf "$(TEXT "Update %s")" "$(TEXT "RR")")"
-      downloadExts "RR" "${CUR_RR_VER:-None}" "https://github.com/wjz304/rr" "update" "0"
-      [ $? -ne 0 ] && continue
+      if [ ! -f "${TMP_PATH}/update.zip" ]; then
+        downloadExts "RR" "${CUR_RR_VER:-None}" "https://github.com/XXXXXX/rr" "update" "0"
+        [ $? -ne 0 ] && continue
+      fi
       updateRR "RR"
       ;;
     d)
       T="$(printf "$(TEXT "Update %s")" "$(TEXT "addons")")"
-      downloadExts "addons" "${CUR_ADDONS_VER:-None}" "https://github.com/wjz304/rr-addons" "addons" "0"
-      [ $? -ne 0 ] && continue
+      if [ ! -f "${TMP_PATH}/addons.zip" ]; then
+        downloadExts "addons" "${CUR_ADDONS_VER:-None}" "https://github.com/XXXXXX/rr-addons" "addons" "0"
+        [ $? -ne 0 ] && continue
+      fi
       updateExts "addons" "0"
       ;;
     m)
       T="$(printf "$(TEXT "Update %s")" "$(TEXT "modules")")"
-      downloadExts "modules" "${CUR_MODULES_VER:-None}" "https://github.com/wjz304/rr-modules" "modules" "0"
-      [ $? -ne 0 ] && continue
+      if [ ! -f "${TMP_PATH}/modules.zip" ]; then
+        downloadExts "modules" "${CUR_MODULES_VER:-None}" "https://github.com/XXXXXX/rr-modules" "modules" "0"
+        [ $? -ne 0 ] && continue
+      fi
       updateExts "modules" "0"
       ;;
     l)
       T="$(printf "$(TEXT "Update %s")" "$(TEXT "LKMs")")"
-      downloadExts "LKMs" "${CUR_LKMS_VER:-None}" "https://github.com/wjz304/rr-lkms" "rp-lkms" "0"
-      [ $? -ne 0 ] && continue
+      if [ ! -f "${TMP_PATH}/rp-lkms.zip" ]; then
+        downloadExts "LKMs" "${CUR_LKMS_VER:-None}" "https://github.com/XXXXXX/rr-lkms" "rp-lkms" "0"
+        [ $? -ne 0 ] && continue
+      fi
       updateExts "LKMs" "0"
       ;;
     u)
-      if ! tty | grep -q "/dev/pts"; then
+      if ! tty | grep -q "/dev/pts" || [ -z "${SSH_TTY}" ]; then
         DIALOG --title "$(TEXT "Update")" \
-          --msgbox "$(TEXT "This feature is only available when accessed via web/ssh.")" 0 0
+          --msgbox "$(TEXT "This feature is only available when accessed via ssh (Requires a terminal that supports ZModem protocol).")" 0 0
         return
       fi
       MSG=""
       MSG+="$(TEXT "Please keep the attachment name consistent with the attachment name on Github.\n")"
-      MSG+="$(TEXT "Upload update.zip will update RR.\n")"
-      MSG+="$(TEXT "Upload addons.zip will update Addons.\n")"
-      MSG+="$(TEXT "Upload modules.zip will update Modules.\n")"
-      MSG+="$(TEXT "Upload rp-lkms.zip will update LKMs.\n")"
+      MSG+="$(TEXT "Upload update*.zip will update RR.\n")"
+      MSG+="$(TEXT "Upload addons*.zip will update Addons.\n")"
+      MSG+="$(TEXT "Upload modules*.zip will update Modules.\n")"
+      MSG+="$(TEXT "Upload rp-lkms*.zip will update LKMs.\n")"
       DIALOG --title "$(TEXT "Update")" \
         --msgbox "${MSG}" 0 0
-      EXTS=("update.zip" "addons.zip" "modules.zip" "rp-lkms.zip")
+      EXTS=(update*.zip addons*.zip modules*.zip rp-lkms*.zip)
       TMP_UP_PATH="${TMP_PATH}/users"
       USER_FILE=""
       rm -rf "${TMP_UP_PATH}"
@@ -2081,7 +2169,7 @@ function updateMenu() {
       rz -be -B 536870912
       for F in $(ls -A); do
         for I in ${EXTS[@]}; do
-          [[ "${I}" == "${F}" ]] && USER_FILE="${F}"
+          [[ "${F}" = ${I} ]] && USER_FILE="${F}"
         done
         break
       done
@@ -2090,15 +2178,21 @@ function updateMenu() {
         DIALOG --title "$(TEXT "Update")" \
           --msgbox "$(TEXT "Not a valid file, please try again!")" 0 0
       else
-        rm -f "${TMP_PATH}/${USER_FILE}"
-        mv -f "${TMP_UP_PATH}/${USER_FILE}" "${TMP_PATH}/${USER_FILE}"
-        if [ "${USER_FILE}" = "update.zip" ]; then
+        if [[ "${USER_FILE}" = update*.zip ]]; then
+          rm -f "${TMP_PATH}/update.zip"
+          mv -f "${TMP_UP_PATH}/${USER_FILE}" "${TMP_PATH}/update.zip"
           updateRR "RR"
-        elif [ "${USER_FILE}" = "addons.zip" ]; then
+        elif [[ "${USER_FILE}" = addons*.zip ]]; then
+          rm -f "${TMP_PATH}/addons.zip"
+          mv -f "${TMP_UP_PATH}/${USER_FILE}" "${TMP_PATH}/addons.zip"
           updateExts "addons" "0"
-        elif [ "${USER_FILE}" = "modules.zip" ]; then
+        elif [[ "${USER_FILE}" = modules*.zip ]]; then
+          rm -f "${TMP_PATH}/modules.zip"
+          mv -f "${TMP_UP_PATH}/${USER_FILE}" "${TMP_PATH}/modules.zip"
           updateExts "modules" "0"
-        elif [ "${USER_FILE}" = "rp-lkms.zip" ]; then
+        elif [[ "${USER_FILE}" = rp-lkms*.zip ]]; then
+          rm -f "${TMP_PATH}/rp-lkms.zip"
+          mv -f "${TMP_UP_PATH}/${USER_FILE}" "${TMP_PATH}/rp-lkms.zip"
           updateExts "LKMs" "0"
         else
           DIALOG --title "$(TEXT "Update")" \

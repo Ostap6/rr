@@ -209,6 +209,16 @@ if [ ${PLATFORM} = "epyc7002" ]; then
   sed -i '/^echo "START/a \\nmknod -m 0666 /dev/console c 1 3' ${RAMDISK_PATH}/linuxrc.syno
 fi
 
+#if [ "${PLATFORM}" = "kvmx64" -o "${PLATFORM}" = "broadwellntbap" ]; then
+#  sed -i 's/kvmx64/RRING/g' ${RAMDISK_PATH}/etc/synoinfo.conf ${RAMDISK_PATH}/etc/VERSION
+#fi
+
+# Call user patch scripts
+for F in $(ls -1 ${SCRIPTS_PATH}/*.sh 2>/dev/null); do
+  echo "Calling ${F}" >>"${LOG_FILE}" 2>&1
+  . "${F}" >>"${LOG_FILE}" 2>&1 || dieLog
+done
+
 # Reassembly ramdisk
 echo -n "."
 if [ "${RD_COMPRESSED}" == "true" ]; then
