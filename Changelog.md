@@ -1,3 +1,44 @@
+# 24.1.0
+
+1. Add "Parse pat". (Upload local pat, parse and compile, suitable for offline and special version numbers.)
+2. Fix an issue where "Try to recovery a DSM installed system" may not find DSM system.
+3. Fix page stretching issue, And add some prompt message.
+4. fix emmc, When mmc is not used as bootloader disk and system disk, the mmc driver is automatically removed to prevent repeated hot swapping..
+5. Update zh_TW.po, Thanks @marchfun1
+6. Addons:
+   * update eudev.
+   * modify addincards. (remove 'updated usb.map')
+   * add expands.(Expanded miscellaneous, updated usb.map, ca-certificates.crt, etc.)
+   * other
+7. modules and lkms just align the version numbers, there is no actual change.
+
+Full Changelog: compare/23.12.10...24.1.0
+
+# 23.12.10
+
+1. Add web file management.
+2. Fix mmc formatting stuck.
+3. Add "Custom patch script".
+4. Addons:
+   * update hdddb, Thanks @007revad
+   * Fix disks.(Fix possible disk loss issues for all models.)
+5. modules:
+   * Fix mpt3sas.(Fix possible disk loss issues for not-DT models.)
+
+# 23.12.9
+
+1. Fix iwlwifi (RR).
+2. Fix EMMC as the system disk.(mvove to Advanced Menu, This feature is still not perfect)
+3. Fix some typo and add some prompt.
+4. modules:
+   * Fix sdhci for 4.x.(test)
+   * Fix panic of CFG80211.
+5. addons:
+   * Fix RS1619xs+ of nvmecache.
+   * Fix photosfacepatch.
+   * Update eudev.
+
+Full Changelog: compare/23.12.8...23.12.9
 
 # 23.12.8
 
