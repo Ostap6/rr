@@ -1,4 +1,5 @@
-# Redpill Recovery (arpl-i18n)
+# Redpill Recovery (arpl-rr)
+https://github.com/syno-community/rr
 
 This project is a system for redpill's preinstallation and recovery environment.
 

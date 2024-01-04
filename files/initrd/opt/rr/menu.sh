@@ -213,8 +213,8 @@ function modelMenu() {
     writeConfigKey "synoinfo" "{}" "${USER_CONFIG_FILE}"
     writeConfigKey "modules" "{}" "${USER_CONFIG_FILE}"
     # Remove old files
-    rm -f "${ORI_ZIMAGE_FILE}" "${ORI_RDGZ_FILE}" "${MOD_ZIMAGE_FILE}" "${MOD_RDGZ_FILE}"
-    rm -f "${PART1_PATH}/grub_cksum.syno" "${PART1_PATH}/GRUB_VER" "${PART2_PATH}/"*
+    rm -f "${ORI_ZIMAGE_FILE}" "${ORI_RDGZ_FILE}" "${MOD_ZIMAGE_FILE}" "${MOD_RDGZ_FILE}" >/dev/null 2>&1
+    rm -f "${PART1_PATH}/grub_cksum.syno" "${PART1_PATH}/GRUB_VER" "${PART2_PATH}/"* >/dev/null 2>&1
     touch ${PART1_PATH}/.build
   fi
 }
@@ -321,9 +321,148 @@ function productversMenu() {
     writeConfigKey "modules.\"${ID}\"" "" "${USER_CONFIG_FILE}"
   done < <(getAllModules "${PLATFORM}" "$([ -n "${KPRE}" ] && echo "${KPRE}-")${KVER}")
   # Remove old files
-  rm -f "${ORI_ZIMAGE_FILE}" "${ORI_RDGZ_FILE}" "${MOD_ZIMAGE_FILE}" "${MOD_RDGZ_FILE}"
-  rm -f "${PART1_PATH}/grub_cksum.syno" "${PART1_PATH}/GRUB_VER" "${PART2_PATH}/"*
+  rm -f "${ORI_ZIMAGE_FILE}" "${ORI_RDGZ_FILE}" "${MOD_ZIMAGE_FILE}" "${MOD_RDGZ_FILE}" >/dev/null 2>&1
+  rm -f "${PART1_PATH}/grub_cksum.syno" "${PART1_PATH}/GRUB_VER" "${PART2_PATH}/"* >/dev/null 2>&1
   touch ${PART1_PATH}/.build
+}
+
+###############################################################################
+# Parse Pat
+function ParsePat() {
+  MKERR_FILE="${TMP_PATH}/makeerror.log"
+  rm -f "${MKERR_FILE}"
+
+  if [ -n "${MODEL}" -a -n "${PRODUCTVER}" ]; then
+    MSG="$(printf "$(TEXT "You have selected the %s and %s.\n'Parse Pat' will overwrite the previous selection.\nDo you want to continue?")" "${MODEL}" "${PRODUCTVER}")"
+    DIALOG --title "$(TEXT "Parse Pat")" \
+      --yesno "${MSG}" 0 0
+    [ $? -ne 0 ] && return
+  fi
+  PAT_PATH=""
+  ITEMS="$(ls ${USER_UP_PATH}/*.pat 2>/dev/null)"
+  if [ -z "${ITEMS}" ]; then
+    MSG=""
+    MSG+="$(TEXT "No pat file found in users folder!\n")"
+    MSG+="$(TEXT "Please upload the pat file to /mnt/p3/users/ folder via DUFS and re-enter this option.\n")"
+    DIALOG --title "$(TEXT "Update")" \
+      --msgbox "${MSG}" 0 0
+    return
+  fi
+  DIALOG --title "$(TEXT "Product Version")" \
+    --no-items --menu "$(TEXT "Choose a pat file")" 0 0 0 ${ITEMS} \
+    2>${TMP_PATH}/resp
+  [ $? -ne 0 ] && return
+  PAT_PATH=$(<${TMP_PATH}/resp)
+  if [ ! -f "${PAT_PATH}" ]; then
+    DIALOG --title "$(TEXT "Update")" \
+      --msgbox "$(TEXT "pat Invalid, try again!")" 0 0
+    return
+  fi
+
+  while true; do
+    echo "$(printf "$(TEXT "Parse %s ...")" "$(basename "${PAT_PATH}")")"
+    extractPatFiles "${PAT_PATH}" "${UNTAR_PAT_PATH}"
+    if [ $? -ne 0 ]; then
+      rm -rf "${UNTAR_PAT_PATH}"
+      return 1
+    fi
+    if [ ! -f "${UNTAR_PAT_PATH}/GRUB_VER" -o ! -f "${UNTAR_PAT_PATH}/VERSION" ]; then
+      echo -e "$(TEXT "pat Invalid, try again!")" >"${MKERR_FILE}"
+      break
+    fi
+    . ${UNTAR_PAT_PATH}/GRUB_VER
+    . ${UNTAR_PAT_PATH}/VERSION
+    if [ -n "${MODEL}" ]; then
+      if [ -f "${WORK_PATH}/model-configs/${MODEL}.yml" ]; then
+        MODEL=${MODEL}
+      else
+        echo "$(printf "$(TEXT "Currently, %s is not supported.")" "${MODEL}")" >"${MKERR_FILE}"
+        break
+      fi
+    fi
+
+    if [ -n "${majorversion}" -a -n "${minorversion}" -a -n "$(readModelKey "${MODEL}" "productvers.[${majorversion}.${minorversion}]")" ]; then
+      PRODUCTVER=${majorversion}.${minorversion}
+      BUILDNUM=${buildnumber}
+      SMALLNUM=${smallfixnumber}
+    else
+      echo "$(printf "$(TEXT "Currently, %s of %s is not supported.")" "${majorversion}.${minorversion}" "${MODEL}")" >"${MKERR_FILE}"
+      break
+    fi
+
+    echo "$(TEXT "Reconfiguring Synoinfo, Addons and Modules")"
+
+    writeConfigKey "model" "${MODEL}" "${USER_CONFIG_FILE}"
+    SN=$(generateSerial "${MODEL}")
+    writeConfigKey "sn" "${SN}" "${USER_CONFIG_FILE}"
+    NETIF_NUM=2
+    MACS=($(generateMacAddress "${MODEL}" ${NETIF_NUM}))
+    for I in $(seq 1 ${NETIF_NUM}); do
+      writeConfigKey "mac${I}" "${MACS[$((${I} - 1))]}" "${USER_CONFIG_FILE}"
+    done
+
+    writeConfigKey "productver" "${PRODUCTVER}" "${USER_CONFIG_FILE}"
+    writeConfigKey "buildnum" "${BUILDNUM}" "${USER_CONFIG_FILE}"
+    writeConfigKey "smallnum" "${SMALLNUM}" "${USER_CONFIG_FILE}"
+
+    mkdir -p "${PART3_PATH}/dl"
+    # Check disk space left
+    SPACELEFT=$(df --block-size=1 | grep ${LOADER_DISK_PART3} | awk '{print $4}')
+    # Discover remote file size
+    FILESIZE=$(du -sb "${PAT_PATH}" | awk '{print$1}')
+    if [ 0${FILESIZE} -ge 0${SPACELEFT} ]; then
+      # No disk space to copy, mv it to dl
+      mv -f "${PAT_PATH}" "${PART3_PATH}/dl/${MODEL}-${PRODUCTVER}.pat"
+    else
+      cp -f "${PAT_PATH}" "${PART3_PATH}/dl/${MODEL}-${PRODUCTVER}.pat"
+    fi
+    MD5SUM="$(md5sum "${PART3_PATH}/dl/${MODEL}-${PRODUCTVER}.pat" | awk '{print $1}')"
+    writeConfigKey "paturl" "" "${USER_CONFIG_FILE}"
+    writeConfigKey "patsum" "${MD5SUM}" "${USER_CONFIG_FILE}"
+
+    # Delete synoinfo and reload model/build synoinfo
+    writeConfigKey "synoinfo" "{}" "${USER_CONFIG_FILE}"
+    while IFS=': ' read KEY VALUE; do
+      writeConfigKey "synoinfo.\"${KEY}\"" "${VALUE}" "${USER_CONFIG_FILE}"
+    done < <(readModelMap "${MODEL}" "productvers.[${PRODUCTVER}].synoinfo")
+
+    # Check addons
+    PLATFORM="$(readModelKey "${MODEL}" "platform")"
+    KVER="$(readModelKey "${MODEL}" "productvers.[${PRODUCTVER}].kver")"
+    KPRE="$(readModelKey "${MODEL}" "productvers.[${PRODUCTVER}].kpre")"
+    while IFS=': ' read ADDON PARAM; do
+      [ -z "${ADDON}" ] && continue
+      if ! checkAddonExist "${ADDON}" "${PLATFORM}" "${KVER}"; then
+        deleteConfigKey "addons.\"${ADDON}\"" "${USER_CONFIG_FILE}"
+      fi
+    done < <(readConfigMap "addons" "${USER_CONFIG_FILE}")
+    # Rebuild modules
+    writeConfigKey "modules" "{}" "${USER_CONFIG_FILE}"
+    while read ID DESC; do
+      writeConfigKey "modules.\"${ID}\"" "" "${USER_CONFIG_FILE}"
+    done < <(getAllModules "${PLATFORM}" "$([ -n "${KPRE}" ] && echo "${KPRE}-")${KVER}")
+
+    # Remove old files
+    rm -f "${ORI_ZIMAGE_FILE}" "${ORI_RDGZ_FILE}" "${MOD_ZIMAGE_FILE}" "${MOD_RDGZ_FILE}" >/dev/null 2>&1
+    rm -f "${PART1_PATH}/grub_cksum.syno" "${PART1_PATH}/GRUB_VER" "${PART2_PATH}/"* >/dev/null 2>&1
+    touch ${PART1_PATH}/.build
+    break
+  done 2>&1 | DIALOG --title "$(TEXT "Main menu")" --cr-wrap --no-collapse \
+    --progressbox "$(TEXT "Making ...")" 20 100
+  if [ -f "${MKERR_FILE}" ]; then
+    DIALOG --title "$(TEXT "Error")" \
+      --msgbox "$(cat ${MKERR_FILE})" 0 0
+    return 1
+  else
+    MODEL="$(readConfigKey "model" "${USER_CONFIG_FILE}")"
+    PRODUCTVER="$(readConfigKey "productver" "${USER_CONFIG_FILE}")"
+    BUILDNUM="$(readConfigKey "buildnum" "${USER_CONFIG_FILE}")"
+    SMALLNUM="$(readConfigKey "smallnum" "${USER_CONFIG_FILE}")"
+    SN="$(readConfigKey "sn" "${USER_CONFIG_FILE}")"
+    MAC1="$(readConfigKey "mac1" "${USER_CONFIG_FILE}")"
+    MAC2="$(readConfigKey "mac2" "${USER_CONFIG_FILE}")"
+    return 0
+  fi
 }
 
 ###############################################################################
@@ -419,8 +558,10 @@ function addonMenu() {
       ;;
     u)
       if ! tty | grep -q "/dev/pts"; then #if ! tty | grep -q "/dev/pts" || [ -z "${SSH_TTY}" ]; then
+        MSG=""
+        MSG+="$(TEXT "This feature is only available when accessed via ssh (Requires a terminal that supports ZModem protocol).\n")"
         DIALOG --title "$(TEXT "Addons")" \
-          --msgbox "$(TEXT "This feature is only available when accessed via ssh (Requires a terminal that supports ZModem protocol).")" 0 0
+          --msgbox "${MSG}" 0 0
         return
       fi
       DIALOG --title "$(TEXT "Addons")" \
@@ -430,7 +571,7 @@ function addonMenu() {
       rm -rf ${TMP_UP_PATH}
       mkdir -p ${TMP_UP_PATH}
       pushd ${TMP_UP_PATH}
-      rz -be -B 536870912
+      rz -be
       for F in $(ls -A); do
         USER_FILE=${F}
         break
@@ -548,8 +689,10 @@ function moduleMenu() {
       ;;
     u)
       if ! tty | grep -q "/dev/pts"; then #if ! tty | grep -q "/dev/pts" || [ -z "${SSH_TTY}" ]; then
+        MSG=""
+        MSG+="$(TEXT "This feature is only available when accessed via ssh (Requires a terminal that supports ZModem protocol).\n")"
         DIALOG --title "$(TEXT "Modules")" \
-          --msgbox "$(TEXT "This feature is only available when accessed via ssh (Requires a terminal that supports ZModem protocol).")" 0 0
+          --msgbox "${MSG}" 0 0
         return
       fi
       MSG=""
@@ -568,7 +711,7 @@ function moduleMenu() {
       rm -rf ${TMP_UP_PATH}
       mkdir -p ${TMP_UP_PATH}
       pushd ${TMP_UP_PATH}
-      rz -be -B 536870912
+      rz -be
       for F in $(ls -A); do
         USER_FILE=${F}
         break
@@ -816,8 +959,121 @@ function synoinfoMenu() {
 
 ###############################################################################
 # Extract linux and ramdisk files from the DSM .pat
+function getSynoExtractor() {
+  MKERR_FILE="${TMP_PATH}/makeerror.log"
+  mirrors=("global.synologydownload.com" "global.download.synology.com" "cndl.synology.cn")
+  fastest=$(_get_fastest ${mirrors[@]})
+  OLDPAT_URL="https://${fastest}/download/DSM/release/7.0.1/42218/DSM_DS3622xs%2B_42218.pat"
+  OLDPAT_PATH="${TMP_PATH}/DS3622xs+-42218.pat"
+  EXTRACTOR_PATH="${PART3_PATH}/extractor"
+  EXTRACTOR_BIN="syno_extract_system_patch"
+
+  # Extractor not exists, get it.
+  mkdir -p "${EXTRACTOR_PATH}"
+
+  echo "$(TEXT "Downloading old pat to extract synology .pat extractor...")"
+
+  STATUS=$(curl -k -w "%{http_code}" -L "${OLDPAT_URL}" -o "${OLDPAT_PATH}")
+  RET=$?
+  if [ ${RET} -ne 0 -o ${STATUS} -ne 200 ]; then
+    rm -f "${OLDPAT_PATH}"
+    MSG="$(printf "$(TEXT "Check internet or cache disk space.\nError: %d:%d")" "${RET}" "${STATUS}")"
+    echo -e "${MSG}" >"${MKERR_FILE}"
+    return 1
+  fi
+
+  # Extract DSM ramdisk file from PAT
+  rm -rf "${RAMDISK_PATH}"
+  mkdir -p "${RAMDISK_PATH}"
+  tar -xf "${OLDPAT_PATH}" -C "${RAMDISK_PATH}" rd.gz >"${MKERR_FILE}" 2>&1
+  if [ $? -ne 0 ]; then
+    rm -f "${OLDPAT_PATH}"
+    rm -rf "${RAMDISK_PATH}"
+    return 1
+  fi
+  rm -f "${OLDPAT_PATH}"
+  # Extract all files from rd.gz
+  (
+    cd "${RAMDISK_PATH}"
+    xz -dc <rd.gz | cpio -idm
+  ) >/dev/null 2>&1 || true
+  # Copy only necessary files
+  for f in libcurl.so.4 libmbedcrypto.so.5 libmbedtls.so.13 libmbedx509.so.1 libmsgpackc.so.2 libsodium.so libsynocodesign-ng-virtual-junior-wins.so.7; do
+    cp -f "${RAMDISK_PATH}/usr/lib/${f}" "${EXTRACTOR_PATH}"
+  done
+  cp -f "${RAMDISK_PATH}/usr/syno/bin/scemd" "${EXTRACTOR_PATH}/${EXTRACTOR_BIN}"
+  rm -rf "${RAMDISK_PATH}"
+
+  return 0
+}
+###############################################################################
+# Extract linux and ramdisk files from the DSM .pat
+function extractPatFiles() {
+  MKERR_FILE="${TMP_PATH}/makeerror.log"
+  PAT_PATH="${1}"
+  EXT_PATH="${2}"
+
+  header="$(od -bcN2 "${PAT_PATH}" | head -1 | awk '{print $3}')"
+  case ${header} in
+  105)
+    echo "$(TEXT "Uncompressed tar")"
+    isencrypted="no"
+    ;;
+  213)
+    echo "$(TEXT "Compressed tar")"
+    isencrypted="no"
+    ;;
+  255)
+    echo "$(TEXT "Encrypted")"
+    isencrypted="yes"
+    ;;
+  *)
+    echo -e "$(TEXT "Could not determine if pat file is encrypted or not, maybe corrupted, try again!")" >"${MKERR_FILE}"
+    return 1
+    ;;
+  esac
+
+  rm -rf "${EXT_PATH}"
+  mkdir -p "${EXT_PATH}"
+  echo -n "$(printf "$(TEXT "Disassembling %s: ")" "$(basename "${PAT_PATH}")")"
+
+  if [ "${isencrypted}" = "yes" ]; then
+    EXTRACTOR_PATH="${PART3_PATH}/extractor"
+    EXTRACTOR_BIN="syno_extract_system_patch"
+    # Check existance of extractor
+    if [ -f "${EXTRACTOR_PATH}/${EXTRACTOR_BIN}" ]; then
+      echo "$(TEXT "Extractor cached.")"
+    else
+      getSynoExtractor
+      [ $? -ne 0 ] && return 1
+    fi
+    # Uses the extractor to untar pat file
+    echo "$(TEXT "Extracting ...")"
+    LD_LIBRARY_PATH=${EXTRACTOR_PATH} "${EXTRACTOR_PATH}/${EXTRACTOR_BIN}" "${PAT_PATH}" "${EXT_PATH}" || true
+  else
+    echo "$(TEXT "Extracting ...")"
+    tar -xf "${PAT_PATH}" -C "${EXT_PATH}" >"${LOG_FILE}" 2>&1
+    if [ $? -ne 0 ]; then
+      cat "${LOG_FILE}" >"${MKERR_FILE}"
+      return 1
+    fi
+  fi
+
+  if [ ! -f ${EXT_PATH}/grub_cksum.syno ] ||
+    [ ! -f ${EXT_PATH}/GRUB_VER ] ||
+    [ ! -f ${EXT_PATH}/zImage ] ||
+    [ ! -f ${EXT_PATH}/rd.gz ]; then
+    echo -e "$(TEXT "pat Invalid, try again!")" >"${MKERR_FILE}"
+    return 1
+  fi
+}
+###############################################################################
+# Extract linux and ramdisk files from the DSM .pat
 function extractDsmFiles() {
-  MKERR_FILE="${1:-"${TMP_PATH}/makeerror.log"}"
+  MKERR_FILE="${TMP_PATH}/makeerror.log"
+  EXTRACTOR_PATH="${PART3_PATH}/extractor"
+  EXTRACTOR_BIN="syno_extract_system_patch"
+
   PATURL="$(readConfigKey "paturl" "${USER_CONFIG_FILE}")"
   PATSUM="$(readConfigKey "patsum" "${USER_CONFIG_FILE}")"
 
@@ -826,9 +1082,6 @@ function extractDsmFiles() {
 
   PAT_FILE="${MODEL}-${PRODUCTVER}.pat"
   PAT_PATH="${PART3_PATH}/dl/${PAT_FILE}"
-  EXTRACTOR_PATH="${PART3_PATH}/extractor"
-  EXTRACTOR_BIN="syno_extract_system_patch"
-  OLDPATURL="https://global.synologydownload.com/download/DSM/release/7.0.1/42218/DSM_DS3622xs%2B_42218.pat"
 
   if [ -f "${PAT_PATH}" ]; then
     echo "$(printf "$(TEXT "%s cached.")" "${PAT_FILE}")"
@@ -846,7 +1099,6 @@ function extractDsmFiles() {
     if echo "${mirrors[@]}" | grep -wq "${mirror}" && [ "${mirror}" != "${fastest}" ]; then
       echo "$(printf "$(TEXT "Based on the current network situation, switch to %s mirror to downloading.")" "${fastest}")"
       PATURL="$(echo ${PATURL} | sed "s/${mirror}/${fastest}/")"
-      OLDPATURL="https://${fastest}/download/DSM/release/7.0.1/42218/DSM_DS3622xs%2B_42218.pat"
     fi
     echo "$(printf "$(TEXT "Downloading %s ...")" "${PAT_FILE}")"
     # Discover remote file size
@@ -874,96 +1126,12 @@ function extractDsmFiles() {
   echo "$(TEXT "OK")"
 
   rm -rf "${UNTAR_PAT_PATH}"
-  mkdir "${UNTAR_PAT_PATH}"
+  mkdir -p "${UNTAR_PAT_PATH}"
   echo -n "$(printf "$(TEXT "Disassembling %s: ")" "${PAT_FILE}")"
 
-  header="$(od -bcN2 ${PAT_PATH} | head -1 | awk '{print $3}')"
-  case ${header} in
-  105)
-    echo "$(TEXT "Uncompressed tar")"
-    isencrypted="no"
-    ;;
-  213)
-    echo "$(TEXT "Compressed tar")"
-    isencrypted="no"
-    ;;
-  255)
-    echo "$(TEXT "Encrypted")"
-    isencrypted="yes"
-    ;;
-  *)
-    echo -e "$(TEXT "Could not determine if pat file is encrypted or not, maybe corrupted, try again!")" >"${MKERR_FILE}"
-    return 1
-    ;;
-  esac
-
-  SPACELEFT=$(df --block-size=1 | grep ${LOADER_DISK_PART3} | awk '{print $4}') # Check disk space left
-
-  if [ "${isencrypted}" = "yes" ]; then
-    # Check existance of extractor
-    if [ -f "${EXTRACTOR_PATH}/${EXTRACTOR_BIN}" ]; then
-      echo "$(TEXT "Extractor cached.")"
-    else
-      # Extractor not exists, get it.
-      mkdir -p "${EXTRACTOR_PATH}"
-      # Check if old pat already downloaded
-      OLDPAT_PATH="${PART3_PATH}/dl/DS3622xs+-42218.pat"
-      if [ ! -f "${OLDPAT_PATH}" ]; then
-        echo "$(TEXT "Downloading old pat to extract synology .pat extractor...")"
-        # Discover remote file size
-        FILESIZE=$(curl -k -sLI "${OLDPATURL}" | grep -i Content-Length | awk '{print$2}')
-        if [ 0${FILESIZE} -ge 0${SPACELEFT} ]; then
-          # No disk space to download, change it to RAMDISK
-          OLDPAT_PATH="${TMP_PATH}/DS3622xs+-42218.pat"
-        fi
-        STATUS=$(curl -k -w "%{http_code}" -L "${OLDPATURL}" -o "${OLDPAT_PATH}")
-        RET=$?
-        if [ ${RET} -ne 0 -o ${STATUS} -ne 200 ]; then
-          rm -f "${OLDPAT_PATH}"
-          MSG="$(printf "$(TEXT "Check internet or cache disk space.\nError: %d:%d")" "${RET}" "${STATUS}")"
-          echo -e "${MSG}" >"${MKERR_FILE}"
-          return 1
-        fi
-      fi
-      # Extract DSM ramdisk file from PAT
-      rm -rf "${RAMDISK_PATH}"
-      mkdir -p "${RAMDISK_PATH}"
-      tar -xf "${OLDPAT_PATH}" -C "${RAMDISK_PATH}" rd.gz >"${LOG_FILE}" 2>&1
-      if [ $? -ne 0 ]; then
-        rm -f "${OLDPAT_PATH}"
-        rm -rf "${RAMDISK_PATH}"
-        cat "${LOG_FILE}" >"${MKERR_FILE}"
-        return 1
-      fi
-      [ ${CLEARCACHE} -eq 1 ] && rm -f "${OLDPAT_PATH}"
-      # Extract all files from rd.gz
-      (
-        cd "${RAMDISK_PATH}"
-        xz -dc <rd.gz | cpio -idm
-      ) >/dev/null 2>&1 || true
-      # Copy only necessary files
-      for f in libcurl.so.4 libmbedcrypto.so.5 libmbedtls.so.13 libmbedx509.so.1 libmsgpackc.so.2 libsodium.so libsynocodesign-ng-virtual-junior-wins.so.7; do
-        cp -f "${RAMDISK_PATH}/usr/lib/${f}" "${EXTRACTOR_PATH}"
-      done
-      cp -f "${RAMDISK_PATH}/usr/syno/bin/scemd" "${EXTRACTOR_PATH}/${EXTRACTOR_BIN}"
-      rm -rf "${RAMDISK_PATH}"
-    fi
-    # Uses the extractor to untar pat file
-    echo "$(TEXT "Extracting ...")"
-    LD_LIBRARY_PATH=${EXTRACTOR_PATH} "${EXTRACTOR_PATH}/${EXTRACTOR_BIN}" "${PAT_PATH}" "${UNTAR_PAT_PATH}" || true
-  else
-    echo "$(TEXT "Extracting ...")"
-    tar -xf "${PAT_PATH}" -C "${UNTAR_PAT_PATH}" >"${LOG_FILE}" 2>&1
-    if [ $? -ne 0 ]; then
-      cat "${LOG_FILE}" >"${MKERR_FILE}"
-      return 1
-    fi
-  fi
-  if [ ! -f ${UNTAR_PAT_PATH}/grub_cksum.syno ] ||
-    [ ! -f ${UNTAR_PAT_PATH}/GRUB_VER ] ||
-    [ ! -f ${UNTAR_PAT_PATH}/zImage ] ||
-    [ ! -f ${UNTAR_PAT_PATH}/rd.gz ]; then
-    echo -e "$(TEXT "pat Invalid, try again!")" >"${MKERR_FILE}"
+  extractPatFiles "${PAT_PATH}" "${UNTAR_PAT_PATH}"
+  if [ $? -ne 0 ]; then
+    rm -rf "${UNTAR_PAT_PATH}"
     return 1
   fi
   echo -n "$(TEXT "Setting hash: ")"
@@ -1003,8 +1171,16 @@ function make() {
     done < <(readConfigMap "addons" "${USER_CONFIG_FILE}")
 
     if [ ! -f "${ORI_ZIMAGE_FILE}" -o ! -f "${ORI_RDGZ_FILE}" ]; then
-      extractDsmFiles "${MKERR_FILE}"
+      extractDsmFiles
       [ $? -ne 0 ] && break
+    fi
+
+    if [[ "${LOADER_DISK}" = /dev/mmcblk* ]] || [ "${EMMCBOOT}" = "true" ]; then
+      echo "$(TEXT "EMMC is used.")"
+    else
+      echo "$(TEXT "EMMC is not used. remove mmc modules.")"
+      deleteConfigKey "modules.mmc_block" "${USER_CONFIG_FILE}"
+      deleteConfigKey "modules.mmc_core" "${USER_CONFIG_FILE}"
     fi
 
     # Check disk space left
@@ -1535,8 +1711,11 @@ function advancedMenu() {
       ;;
     d)
       if ! tty | grep -q "/dev/pts"; then #if ! tty | grep -q "/dev/pts" || [ -z "${SSH_TTY}" ]; then
+        MSG=""
+        MSG+="$(TEXT "This feature is only available when accessed via ssh (Requires a terminal that supports ZModem protocol).\n")"
+        MSG+="$(printf "$(TEXT "Or upload the dts file to %s via DUFS, Will be automatically imported when building.")" "${USER_UP_PATH}/${MODEL}.dts")"
         DIALOG --title "$(TEXT "Advanced")" \
-          --msgbox "$(TEXT "This feature is only available when accessed via ssh (Requires a terminal that supports ZModem protocol).")" 0 0
+          --msgbox "${MSG}" 0 0
         return
       fi
       DIALOG --title "$(TEXT "Advanced")" \
@@ -1545,7 +1724,7 @@ function advancedMenu() {
       rm -rf "${TMP_UP_PATH}"
       mkdir -p "${TMP_UP_PATH}"
       pushd "${TMP_UP_PATH}"
-      rz -be -B 536870912
+      rz -be
       for F in $(ls -A); do
         USER_FILE="${TMP_UP_PATH}/${F}"
         dtc -q -I dts -O dtb "${F}" >"test.dtb"
@@ -2148,8 +2327,11 @@ function updateMenu() {
       ;;
     u)
       if ! tty | grep -q "/dev/pts" || [ -z "${SSH_TTY}" ]; then
+        MSG=""
+        MSG+="$(TEXT "This feature is only available when accessed via ssh (Requires a terminal that supports ZModem protocol).\n")"
+        MSG+="$(TEXT "Or upload update.zip, addons.zip, modules.zip, rp-lkms.zip to /tmp/ via DUFS will skip the download.\n")"
         DIALOG --title "$(TEXT "Update")" \
-          --msgbox "$(TEXT "This feature is only available when accessed via ssh (Requires a terminal that supports ZModem protocol).")" 0 0
+          --msgbox "${MSG}" 0 0
         return
       fi
       MSG=""
@@ -2166,7 +2348,7 @@ function updateMenu() {
       rm -rf "${TMP_UP_PATH}"
       mkdir -p "${TMP_UP_PATH}"
       pushd "${TMP_UP_PATH}"
-      rz -be -B 536870912
+      rz -be
       for F in $(ls -A); do
         for I in ${EXTS[@]}; do
           [[ "${F}" = ${I} ]] && USER_FILE="${F}"
@@ -2228,17 +2410,22 @@ if [ "x$1" = "xb" -a -n "${MODEL}" -a -n "${PRODUCTVER}" -a loaderIsConfigured ]
   boot && exit 0 || sleep 5
 fi
 # Main loop
-[ -n "${MODEL}" ] && NEXT="v" || NEXT="m"
+NEXT="m"
+[ -n "$(ls ${USER_UP_PATH}/*.pat 2>/dev/null)" ] && NEXT="u"
+[ -f "${PART1_PATH}/.build" ] && NEXT="d"
+[ -n "${MODEL}" ] && NEXT="v"
 while true; do
-  echo "m \"$(TEXT "Choose a model")\"" >"${TMP_PATH}/menu"
+  echo -n "" >"${TMP_PATH}/menu"
+  echo "m \"$(TEXT "Choose a model")\"" >>"${TMP_PATH}/menu"
   if [ -n "${MODEL}" ]; then
     echo "n \"$(TEXT "Choose a version")\"" >>"${TMP_PATH}/menu"
-    if [ -n "${PRODUCTVER}" ]; then
-      echo "a \"$(TEXT "Addons menu")\"" >>"${TMP_PATH}/menu"
-      echo "o \"$(TEXT "Modules menu")\"" >>"${TMP_PATH}/menu"
-      echo "x \"$(TEXT "Cmdline menu")\"" >>"${TMP_PATH}/menu"
-      echo "i \"$(TEXT "Synoinfo menu")\"" >>"${TMP_PATH}/menu"
-    fi
+  fi
+  echo "u \"$(TEXT "Parse pat")\"" >>"${TMP_PATH}/menu"
+  if [ -n "${PRODUCTVER}" ]; then
+    echo "a \"$(TEXT "Addons menu")\"" >>"${TMP_PATH}/menu"
+    echo "o \"$(TEXT "Modules menu")\"" >>"${TMP_PATH}/menu"
+    echo "x \"$(TEXT "Cmdline menu")\"" >>"${TMP_PATH}/menu"
+    echo "i \"$(TEXT "Synoinfo menu")\"" >>"${TMP_PATH}/menu"
   fi
   echo "v \"$(TEXT "Advanced menu")\"" >>"${TMP_PATH}/menu"
   if [ -n "${MODEL}" ]; then
@@ -2269,6 +2456,10 @@ while true; do
     ;;
   n)
     productversMenu
+    NEXT="d"
+    ;;
+  u)
+    ParsePat
     NEXT="d"
     ;;
   a)
