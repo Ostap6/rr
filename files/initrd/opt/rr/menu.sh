@@ -370,17 +370,28 @@ function ParsePat() {
       echo -e "$(TEXT "pat Invalid, try again!")" >"${MKERR_FILE}"
       break
     fi
-    . ${UNTAR_PAT_PATH}/GRUB_VER
-    . ${UNTAR_PAT_PATH}/VERSION
-    if [ -n "${MODEL}" ]; then
-      if [ -f "${WORK_PATH}/model-configs/${MODEL}.yml" ]; then
-        MODEL=${MODEL}
+
+    MODELTMP=$(grep -E "MODEL=\".*\"" ${UNTAR_PAT_PATH}/GRUB_VER | sed 's/.*MODEL="\(.*\)".*/\1/')
+    if [ -n "${MODELTMP}" ]; then
+      if [ -f "${WORK_PATH}/model-configs/${MODELTMP}.yml" ]; then
+        MODEL=${MODELTMP}
       else
-        echo "$(printf "$(TEXT "Currently, %s is not supported.")" "${MODEL}")" >"${MKERR_FILE}"
-        break
+        IS_FIND="false"
+        for M in $(find "${WORK_PATH}/model-configs" -maxdepth 1 -name \*.yml | sed 's/.*\///; s/\.yml//'); do
+          if [ "$(readModelKey "${M}" "id")" = "${MODELTMP}" ]; then
+            MODEL=${M}
+            IS_FIND="true"
+            break
+          fi
+        done
+        if [ "${IS_FIND}" = "false" ]; then
+          echo "$(printf "$(TEXT "Currently, %s is not supported.")" "${MODELTMP}")" >"${MKERR_FILE}"
+          break
+        fi
       fi
     fi
 
+    . ${UNTAR_PAT_PATH}/VERSION
     if [ -n "${majorversion}" -a -n "${minorversion}" -a -n "$(readModelKey "${MODEL}" "productvers.[${majorversion}.${minorversion}]")" ]; then
       PRODUCTVER=${majorversion}.${minorversion}
       BUILDNUM=${buildnumber}
@@ -604,6 +615,7 @@ function addonMenu() {
     esac
   done
 }
+
 ###############################################################################
 function moduleMenu() {
   PLATFORM="$(readModelKey "${MODEL}" "platform")"
@@ -618,6 +630,7 @@ function moduleMenu() {
       l "$(TEXT "Select loaded modules")" \
       u "$(TEXT "Upload a external module")" \
       p "$(TEXT "Priority use of official drivers:") \Z4${ODP}\Zn" \
+      f "$(TEXT "Edit modules that need to be copied to DSM")" \
       e "$(TEXT "Exit")" \
       2>${TMP_PATH}/resp
     [ $? -ne 0 ] && break
@@ -732,6 +745,22 @@ function moduleMenu() {
       [ "${ODP}" = "false" ] && ODP='true' || ODP='false'
       writeConfigKey "odp" "${ODP}" "${USER_CONFIG_FILE}"
       ;;
+    f)
+      if [ -f ${USER_UP_PATH}/modulelist ]; then
+        cp -f "${USER_UP_PATH}/modulelist" "${TMP_PATH}/modulelist.tmp"
+      else
+        cp -f "${WORK_PATH}/patch/modulelist" "${TMP_PATH}/modulelist.tmp"
+      fi
+      while true; do
+        DIALOG --title "$(TEXT "Edit with caution")" \
+          --editbox "${TMP_PATH}/modulelist.tmp" 0 0 2>"${TMP_PATH}/modulelist.user"
+        [ $? -ne 0 ] && return
+        [ ! -d "${USER_UP_PATH}" ] && mkdir -p "${USER_UP_PATH}"
+        mv -f "${TMP_PATH}/modulelist.user" "${USER_UP_PATH}/modulelist"
+        dos2unix "${USER_UP_PATH}/modulelist"
+        break
+      done
+      ;;
     e)
       break
       ;;
@@ -760,6 +789,7 @@ function cmdlineMenu() {
       MSG+="$(TEXT "Commonly used cmdlines:\n")"
       MSG+="$(TEXT " * \Z4disable_mtrr_trim=\Zn\n    disables kernel trim any uncacheable memory out.\n")"
       MSG+="$(TEXT " * \Z4intel_idle.max_cstate=1\Zn\n    Set the maximum C-state depth allowed by the intel_idle driver.\n")"
+      MSG+="$(TEXT " * \Z4libata.force=noncq\Zn\n    Disable NCQ for all SATA ports.\n")"
       MSG+="$(TEXT " * \Z4SataPortMap=??\Zn\n    Sata Port Map.\n")"
       MSG+="$(TEXT " * \Z4DiskIdxMap=??\Zn\n    Disk Index Map, Modify disk name sequence.\n")"
       MSG+="$(TEXT " * \Z4i915.enable_guc=2\Zn\n    Enable the GuC firmware on Intel graphics hardware.(value: 1,2 or 3)\n")"
@@ -1175,14 +1205,6 @@ function make() {
       [ $? -ne 0 ] && break
     fi
 
-    if [[ "${LOADER_DISK}" = /dev/mmcblk* ]] || [ "${EMMCBOOT}" = "true" ]; then
-      echo "$(TEXT "EMMC is used.")"
-    else
-      echo "$(TEXT "EMMC is not used. remove mmc modules.")"
-      deleteConfigKey "modules.mmc_block" "${USER_CONFIG_FILE}"
-      deleteConfigKey "modules.mmc_core" "${USER_CONFIG_FILE}"
-    fi
-
     # Check disk space left
     SPACELEFT=$(df --block-size=1 | grep ${LOADER_DISK_PART3} | awk '{print $4}')
     [ ${SPACELEFT} -le 268435456 ] && rm -rf "${PART3_PATH}/dl"
@@ -1256,7 +1278,7 @@ function advancedMenu() {
       echo "d \"$(TEXT "Custom dts file # Need rebuild")\"" >>"${TMP_PATH}/menu"
     fi
     echo "0 \"$(TEXT "Custom patch script # Developer")\"" >>"${TMP_PATH}/menu"
-    if [ -b "/dev/mmcblk0" ]; then
+    if [ -n "$(ls /dev/mmcblk* 2>/dev/null)" ]; then
       echo "b \"$(TEXT "Use EMMC as the system disk:") \Z4${EMMCBOOT}\Zn\"" >>"${TMP_PATH}/menu"
     fi
     echo "r \"$(TEXT "Clone bootloader disk to another disk")\"" >>"${TMP_PATH}/menu"
@@ -2007,6 +2029,7 @@ function editUserConfig() {
       --editbox "${USER_CONFIG_FILE}" 0 0 2>"${TMP_PATH}/userconfig"
     [ $? -ne 0 ] && return
     mv -f "${TMP_PATH}/userconfig" "${USER_CONFIG_FILE}"
+    dos2unix "${USER_CONFIG_FILE}"
     ERRORS=$(yq eval "${USER_CONFIG_FILE}" 2>&1)
     [ $? -eq 0 ] && break
     DIALOG --title "$(TEXT "Edit with caution")" \
@@ -2036,6 +2059,7 @@ function editGrubCfg() {
       --editbox "${GRUB_PATH}/grub.cfg" 0 0 2>"${TMP_PATH}/usergrub.cfg"
     [ $? -ne 0 ] && return
     mv -f "${TMP_PATH}/usergrub.cfg" "${GRUB_PATH}/grub.cfg"
+    dos2unix "${GRUB_PATH}/grub.cfg"
     break
   done
 }
@@ -2399,6 +2423,7 @@ function notepadMenu() {
     --editbox "${USER_UP_PATH}/notepad" 0 0 2>"${TMP_PATH}/notepad"
   [ $? -ne 0 ] && return
   mv -f "${TMP_PATH}/notepad" "${USER_UP_PATH}/notepad"
+  dos2unix "${USER_UP_PATH}/notepad"
 }
 
 ###############################################################################
