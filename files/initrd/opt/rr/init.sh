@@ -18,7 +18,7 @@ printf "\033[1;32m%*s\033[0m\n" $(((${#TITLE} + ${COLUMNS}) / 2)) "${TITLE}"
 printf "\033[1;44m%*s\033[0m\n" ${COLUMNS} ""
 
 # Get first MAC address
-ETHX=$(ls /sys/class/net/ | grep -v lo) || true
+ETHX=$(ls /sys/class/net/ 2>/dev/null | grep -v lo) || true
 # No network devices
 [ $(echo ${ETHX} | wc -w) -le 0 ] && die "$(TEXT "Network devices not found!")"
 
@@ -181,8 +181,11 @@ DSMLOGO="$(readConfigKey "dsmlogo" "${USER_CONFIG_FILE}")"
 if [ "${DSMLOGO}" = "true" -a -c "/dev/fb0" ]; then
   IP="$(getIP)"
   [ -n "${IP}" ] && URL="http://${IP}:7681" || URL="http://rr:7681/"
-  python ${WORK_PATH}/include/functions.py makeqr -d "${URL}" -l "bl" -o "${TMP_PATH}/qrcode.png"
-  [ -f "${TMP_PATH}/qrcode.png" ] && echo | fbv -acufi "${TMP_PATH}/qrcode.png" >/dev/null 2>/dev/null || true
+  python ${WORK_PATH}/include/functions.py makeqr -d "${URL}" -l "0" -o "${TMP_PATH}/qrcode_init.png"
+  [ -f "${TMP_PATH}/qrcode_init.png" ] && echo | fbv -acufi "${TMP_PATH}/qrcode_init.png" >/dev/null 2>/dev/null || true
+
+  python ${WORK_PATH}/include/functions.py makeqr -f "${WORK_PATH}/include/qhxg.png" -l "7" -o "${TMP_PATH}/qrcode_qhxg.png"
+  [ -f "${TMP_PATH}/qrcode_qhxg.png" ] && echo | fbv -acufi "${TMP_PATH}/qrcode_qhxg.png" >/dev/null 2>/dev/null || true
 fi
 
 # Check memory
