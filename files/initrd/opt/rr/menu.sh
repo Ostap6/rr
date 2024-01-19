@@ -789,6 +789,7 @@ function cmdlineMenu() {
       MSG+="$(TEXT "Commonly used cmdlines:\n")"
       MSG+="$(TEXT " * \Z4disable_mtrr_trim=\Zn\n    disables kernel trim any uncacheable memory out.\n")"
       MSG+="$(TEXT " * \Z4intel_idle.max_cstate=1\Zn\n    Set the maximum C-state depth allowed by the intel_idle driver.\n")"
+      MSG+="$(TEXT " * \Z4pcie_port_pm=off\Zn\n    Turn off the power management of the PCIe port.\n")"
       MSG+="$(TEXT " * \Z4libata.force=noncq\Zn\n    Disable NCQ for all SATA ports.\n")"
       MSG+="$(TEXT " * \Z4SataPortMap=??\Zn\n    Sata Port Map.\n")"
       MSG+="$(TEXT " * \Z4DiskIdxMap=??\Zn\n    Disk Index Map, Modify disk name sequence.\n")"
@@ -1287,6 +1288,7 @@ function advancedMenu() {
     echo "g \"$(TEXT "Show QR logo:") \Z4${DSMLOGO}\Zn\"" >>"${TMP_PATH}/menu"
     echo "1 \"$(TEXT "Set global proxy")\"" >>"${TMP_PATH}/menu"
     echo "2 \"$(TEXT "Set github proxy")\"" >>"${TMP_PATH}/menu"
+    echo "! \"$(TEXT "Vigorously miracle")\"" >>"${TMP_PATH}/menu"
     echo "e \"$(TEXT "Exit")\"" >>"${TMP_PATH}/menu"
 
     DIALOG --title "$(TEXT "Advanced")" \
@@ -1966,6 +1968,13 @@ function advancedMenu() {
         writeConfigKey "github_proxy" "${PROXY}" "${USER_CONFIG_FILE}"
       fi
       ;;
+    !)
+      MSG=""
+      MSG+="$(TEXT "It is expected that all restrictions on DSM will be lifted,\n")"
+      MSG+="$(TEXT "But since upgrading is not supported, I don not want to implement it for the time being.\n")"
+      DIALOG --title "$(TEXT "Advanced")" \
+        --msgbox "${MSG}" 0 0
+      ;;
     e) break ;;
     esac
   done
@@ -2078,9 +2087,15 @@ function boot() {
 ###############################################################################
 # Shows language to user choose one
 function languageMenu() {
-  ITEMS="$(ls ${WORK_PATH}/lang/*.mo 2>/dev/null | sort | sed -r 's/.*\/(.*)\.mo$/\1/')"
+  rm -f "${TMP_PATH}/menu"
+  while read L; do
+    A="$(echo "$(strings "${WORK_PATH}/lang/${L}.mo" 2>/dev/null | grep "Last-Translator" | sed "s/Last-Translator://")")"
+    echo "${L} \"${A:-"anonymous"}\"" >>"${TMP_PATH}/menu"
+  done < <(ls ${WORK_PATH}/lang/*.mo 2>/dev/null | sort | sed -r 's/.*\/(.*)\.mo$/\1/')
+
   DIALOG \
-    --default-item "${LAYOUT}" --no-items --menu "$(TEXT "Choose a language")" 0 0 0 ${ITEMS} 2>${TMP_PATH}/resp
+    --default-item "${LAYOUT}" --menu "$(TEXT "Choose a language")" 0 0 0  --file "${TMP_PATH}/menu" \
+    2>${TMP_PATH}/resp
   [ $? -ne 0 ] && return
   resp=$(cat ${TMP_PATH}/resp 2>/dev/null)
   [ -z "${resp}" ] && return

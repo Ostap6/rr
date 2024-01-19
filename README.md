@@ -1,3 +1,6 @@
+Due to criticism from the community, this repository will no longer be updated. 
+_You can download it from this link_ >>: **https://www.syno.community/**
+---------------------------------
 # Redpill Recovery (arpl-rr)
 https://github.com/syno-community/rr
 
