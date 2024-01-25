@@ -1,13 +1,13 @@
 
 # ENV:
-* ### 常用工具:
-   * telnet 工具 putty (下载: https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html)
-   * ssh 工具 FinalShell (下载: https://www.hostbuf.com/t/988.html)  
-   * sftp 工具 WinSCP (下载: https://winscp.net/eng/index.php)
-   * 文本编辑工具 Notepad3 (下载: https://github.com/rizonesoft/Notepad3/releases)
-   * 镜像写盘工具 Rufus (下载: https://rufus.ie/zh/)
-   * 镜像转换工具 StarWind V2V Image Converter (下载: https://www.starwindsoftware.com/starwind-v2v-converter)
-   * 磁盘管理工具 Diskgenius (下载: https://www.diskgenius.com/)
+* ### Инструменты:
+   * telnet / putty ( https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html)
+   * ssh FinalShell ( https://www.hostbuf.com/t/988.html)  
+   * sftp  WinSCP ( https://winscp.net/eng/index.php)
+   * Блокнот Notepad3 (下载: https://github.com/rizonesoft/Notepad3/releases)
+   * Запись USB Rufus (https://rufus.ie/ru/)
+   * Конвертор StarWind V2V Image Converter ( https://www.starwindsoftware.com/starwind-v2v-converter)
+   * Инструмент HDD Diskgenius ( https://www.diskgenius.com/)
 
 # LINK:
    * 查找: 
